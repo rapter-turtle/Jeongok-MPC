@@ -83,25 +83,25 @@ def export_heron_model_nlp1() -> AcadosModel:
     # dynamics
     T = 0.5*((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
 
-    f_expl = vertcat(u*cos(psi) - v*sin(psi),
-                     u*sin(psi) + v*cos(psi),
-                     r,
-                     ( - Xu*u - Xuu * sqrt(u * u + eps) * u + F*cos(bu*delta))/(M + Xu_dot),
-                     ( -Yv*v - Yr*r + F*sin(b2*delta) + F_bow*B),
-                     ( - Nr*r - b3*F*sin(b2*delta) + F_l*F_bow*B),
-                     delta_d,
-                     F_d
-                     )
-    
     # f_expl = vertcat(u*cos(psi) - v*sin(psi),
     #                  u*sin(psi) + v*cos(psi),
     #                  r,
-    #                  ( - Xu*u - Xuu * sqrt(u * u + eps) * u + T*cos(bu*delta))/(M + Xu_dot),
-    #                  ( -Yv*v - Yr*r + T*sin(b2*delta) + F_bow*B),
-    #                  ( - Nr*r - b3*T*sin(b2*delta) + F_l*F_bow*B),
+    #                  ( - Xu*u - Xuu * sqrt(u * u + eps) * u + F*cos(bu*delta))/(M + Xu_dot),
+    #                  ( -Yv*v - Yr*r + F*sin(b2*delta) + F_bow*B),
+    #                  ( - Nr*r - b3*F*sin(b2*delta) + F_l*F_bow*B),
     #                  delta_d,
     #                  F_d
     #                  )
+    
+    f_expl = vertcat(u*cos(psi) - v*sin(psi),
+                     u*sin(psi) + v*cos(psi),
+                     r,
+                     ( - Xu*u - Xuu * sqrt(u * u + eps) * u + T*cos(bu*delta))/(M + Xu_dot),
+                     ( -Yv*v - Yr*r + T*sin(b2*delta) + F_bow*B),
+                     ( - Nr*r - b3*T*sin(b2*delta) + F_l*F_bow*B),
+                     delta_d,
+                     F_d
+                     )
 
     f_impl = states_dot - f_expl
 

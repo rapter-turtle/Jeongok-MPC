@@ -97,35 +97,6 @@ class AuraMPC(Node):
             # Steer below -300 maps directly to PWM 1000
             return 1000.0
 
-    def convert_thrust_to_pwm(self, rpm_thrust, thr):
-        """Convert thrust level to PWM signal"""
-        # thr_new = np.sign(rpm_thrust - thr)*100*0.5 + thr
-
-        # if (rpm_thrust-thr)*(rpm_thrust-thr_new)<0:
-        #     thr_new = rpm_thrust
-        thr_new = rpm_thrust
-        
-
-        if rpm_thrust <= 0.0 :
-            thrust = -np.sqrt(-(rpm_thrust))
-        elif rpm_thrust >= 0.0:
-            thrust = np.sqrt(rpm_thrust)
-        else:
-            thrust = 0.0
-
-        dob_thrust = thrust
-
-        if thrust < 0.0:
-            pwm = 3.9 * thrust + 1450.0
-            return self.clamp(pwm, 1000.0, 1450.0), thr, dob_thrust  # Any value <= 0 thrust maps to PWM 1000
-        else:
-            # Calculate PWM based on the thrust
-            pwm = 3.9 * thrust + 1550.0
-            # You can switch the formula if needed, using the commented one
-            # pwm = 5.0 * thrust + 1500
-            return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
-    
-
     # def convert_thrust_to_pwm(self, rpm_thrust, thr):
     #     """Convert thrust level to PWM signal"""
     #     # thr_new = np.sign(rpm_thrust - thr)*100*0.5 + thr
@@ -133,26 +104,15 @@ class AuraMPC(Node):
     #     # if (rpm_thrust-thr)*(rpm_thrust-thr_new)<0:
     #     #     thr_new = rpm_thrust
     #     thr_new = rpm_thrust
-    #     # print(rpm_thrust)
-    #     # deadzone = 22.0*22.0
-    #     deadzone = 22.0*22.0
-    #     threshold = 100.0
-    #     # deadzone = 10.0*10.0
-    #     if thr_new < threshold and thr_new > -threshold:
-    #         thrust_2 = 0.0 
-    #     else:        
-    #         thrust_2 = deadzone*np.sign(thr_new) + thr_new
         
 
-    #     if thrust_2 <= 0.0 :
-    #         thrust = -np.sqrt(-(thrust_2))
-    #     elif thrust_2 >= 0.0:
-    #         thrust = np.sqrt(thrust_2)
+    #     if rpm_thrust <= 0.0 :
+    #         thrust = -np.sqrt(-(rpm_thrust))
+    #     elif rpm_thrust >= 0.0:
+    #         thrust = np.sqrt(rpm_thrust)
     #     else:
     #         thrust = 0.0
 
-    #     # print("thrust : ",thrust)
-        
     #     dob_thrust = thrust
 
     #     if thrust < 0.0:
@@ -164,6 +124,46 @@ class AuraMPC(Node):
     #         # You can switch the formula if needed, using the commented one
     #         # pwm = 5.0 * thrust + 1500
     #         return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
+    
+
+    def convert_thrust_to_pwm(self, rpm_thrust, thr):
+        """Convert thrust level to PWM signal"""
+        # thr_new = np.sign(rpm_thrust - thr)*100*0.5 + thr
+
+        # if (rpm_thrust-thr)*(rpm_thrust-thr_new)<0:
+        #     thr_new = rpm_thrust
+        thr_new = rpm_thrust
+        # print(rpm_thrust)
+        # deadzone = 22.0*22.0
+        deadzone = 22.0*22.0
+        threshold = 100.0
+        # deadzone = 10.0*10.0
+        if thr_new < threshold and thr_new > -threshold:
+            thrust_2 = 0.0 
+        else:        
+            thrust_2 = deadzone*np.sign(thr_new) + thr_new
+        
+
+        if thrust_2 <= 0.0 :
+            thrust = -np.sqrt(-(thrust_2))
+        elif thrust_2 >= 0.0:
+            thrust = np.sqrt(thrust_2)
+        else:
+            thrust = 0.0
+
+        # print("thrust : ",thrust)
+        
+        dob_thrust = thrust
+
+        if thrust < 0.0:
+            pwm = 3.9 * thrust + 1450.0
+            return self.clamp(pwm, 1000.0, 1450.0), thr, dob_thrust  # Any value <= 0 thrust maps to PWM 1000
+        else:
+            # Calculate PWM based on the thrust
+            pwm = 3.9 * thrust + 1550.0
+            # You can switch the formula if needed, using the commented one
+            # pwm = 5.0 * thrust + 1500
+            return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
     
     def ekf_callback(self, msg):# - frequency = gps callback freq. 
         """Callback to update states from EKF estimated state."""
