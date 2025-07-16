@@ -50,17 +50,16 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
 
     # Deadzone
     # F = F_cmd 
-    if F < 40.0 and F > -40.0:
-        F = 0.0
-    elif F > 40:
-        F = F + 400.0
+    a = 0
+    if F < 0:
+        a = -1
     else:
-        F = F - 400.0
+        a = 1
 
 
-    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + 0.01*F*np.cos(bu*delta))/(M + Xu_dot),
-                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + 0.01*F*np.sin(b2*delta)),
-                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - b3*0.01*F*np.sin(b2*delta))
+    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + a*0.01*F*F*np.cos(bu*delta))/(M + Xu_dot),
+                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + a*0.01*F*F*np.sin(b2*delta)),
+                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - a*b3*0.01*F*F*np.sin(b2*delta))
                     ])
 
 

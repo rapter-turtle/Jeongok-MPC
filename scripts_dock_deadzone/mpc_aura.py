@@ -34,10 +34,13 @@ class AuraMPC(Node):
         self.delta = self.F = 0.0
         self.delta_pwm = self.F_pwm = 1500.0
         self.states = np.zeros(8)
+        self.thr = 0.0
+        self.del_thr_max = 0.5
+        self.dob_thrust = 0.0
         
         # MPC parameter settings
-        self.Tf = 20 # prediction time 4 sec
-        self.N = 40 # prediction horizon
+        self.Tf = 15 # prediction time 4 sec
+        self.N = 30 # prediction horizon
         self.con_dt = 0.5 # control sampling time
         self.ocp_solver = setup_trajectory_tracking(self.states, self.N, self.Tf)
 
@@ -57,14 +60,13 @@ class AuraMPC(Node):
         self.k = 0
         self.create_timer(self.con_dt, self.run)
         self.create_timer(self.DOB_dt, self.run_DOB)
-    
+     
     def clamp(self, value, min_value, max_value):
         """Clamp the value to the range [min_value, max_value]"""
         return max(min_value, min(value, max_value))
 
     def convert_steering_to_pwm(self,steer):
         """Map steering value to PWM based on the given formula"""
-        pwm_center = 1500.0
 
         if steer >= 300.0:
             # Steer above 300 maps directly to PWM 2000
@@ -80,32 +82,46 @@ class AuraMPC(Node):
             return 1000.0
 
 
-    def convert_thrust_to_pwm(self, rpm_thrust):
+    def convert_thrust_to_pwm(self, rpm_thrust, thr):
         """Convert thrust level to PWM signal"""
-        deadzone = 20*20
-        print(rpm_thrust)
-        if rpm_thrust <= -20:
-            thrust = -np.sqrt(-(rpm_thrust-deadzone))
-        elif rpm_thrust >= 20:
-            thrust = np.sqrt(rpm_thrust+deadzone)
+        # thr_new = np.sign(rpm_thrust - thr)*100*0.5 + thr
+
+        # if (rpm_thrust-thr)*(rpm_thrust-thr_new)<0:
+        #     thr_new = rpm_thrust
+        thr_new = rpm_thrust
+        # print(rpm_thrust)
+        # deadzone = 22.0*22.0
+        deadzone = 22.0*22.0
+        threshold = 100.0
+        # deadzone = 10.0*10.0
+        if thr_new < threshold and thr_new > -threshold:
+            thrust_2 = 0.0 
+        else:        
+            thrust_2 = deadzone*np.sign(thr_new) + thr_new
+        
+
+        if thrust_2 <= 0.0 :
+            thrust = -np.sqrt(-(thrust_2))
+        elif thrust_2 >= 0.0:
+            thrust = np.sqrt(thrust_2)
         else:
             thrust = 0.0
-        # if rpm_thrust <= 0:
-        #     thrust = -np.sqrt(-(rpm_thrust))
-        # else:
-        #     thrust = np.sqrt(rpm_thrust)
+
+        # print("thrust : ",thrust)
         
+        dob_thrust = thrust
 
         if thrust < 0.0:
             pwm = 3.9 * thrust + 1450.0
-            return self.clamp(pwm, 1000.0, 1450.0)  # Any value <= 0 thrust maps to PWM 1000
+            return self.clamp(pwm, 1000.0, 1450.0), thr, dob_thrust  # Any value <= 0 thrust maps to PWM 1000
         else:
             # Calculate PWM based on the thrust
             pwm = 3.9 * thrust + 1550.0
             # You can switch the formula if needed, using the commented one
             # pwm = 5.0 * thrust + 1500
-            return self.clamp(pwm, 1550.0, 2000.0)  # Ensure PWM is within the bounds
+            return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
     
+
     def ekf_callback(self, msg):# - frequency = gps callback freq. 
         """Callback to update states from EKF estimated state."""
         self.x, self.y, self.p, self.u, self.v, self.r = msg.data[:6]
@@ -136,7 +152,7 @@ class AuraMPC(Node):
         ##### Reference States ######
         for j in range(self.N+1):
             dock_x = 30.0
-            dock_y = -10.0
+            dock_y = -0.0
             real_dock = dock_x
             dock_psi = 0.0*3.141592/180
 
@@ -146,14 +162,11 @@ class AuraMPC(Node):
                 yref = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0))
             self.ocp_solver.cost_set(j, "yref", yref)
         
-        # dis_x = self.param_filtered[0]*np.cos(self.p) - self.param_filtered[1]*np.sin(self.p)
-        # dis_y = self.param_filtered[0]*np.sin(self.p) + self.param_filtered[1]*np.cos(self.p)
         
         ##### Obstacle Position ######
         obs_pos = np.array([dock_x, dock_y + 2, dock_psi,  # Obstacle-1: x, y, radius
                             self.A, self.B, self.C, 
                             # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
-                            # dis_x, dis_y, self.param_filtered[2]]) # Obstacle-2: x, y, radius
                             self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]) # Obstacle-2: x, y, radius
         
         for j in range(self.N+1):
@@ -170,9 +183,6 @@ class AuraMPC(Node):
         t_preparation = self.ocp_solver.get_stats('time_tot')
 
         # set initial state
-        # head = self.states
-        # head[0] = self.x + 4.0*np.cos(self.p) - offset[0]
-        # head[1] = self.y + 4.0*np.sin(self.p) - offset[1]
         self.ocp_solver.set(0, "lbx", self.states)
         self.ocp_solver.set(0, "ubx", self.states)
 
@@ -189,17 +199,13 @@ class AuraMPC(Node):
         self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
 
-        # print(self.F)
-        # Publish the control inputs (e.g., thrust commands)
-        if np.sqrt((self.states[0] - dock_x)**2 + (self.states[1] - dock_y)**2) < 2.0 and (self.states[3]**2 + self.states[4]**2) < 1.0:
-            self.F = 0.0
-            self.delta = 0.0
-
         self.delta_pwm = self.convert_steering_to_pwm(self.delta)
-        self.F_pwm = self.convert_thrust_to_pwm(self.F*100)                        
+        self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
         actuator_msg = Float64MultiArray()
         actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
-        # print(del_con[0], del_con[1])
+        # print("thrust d : ",del_con[1], "F : ", self.F*100.0)
+        # print("steer : ",self.delta, "thrust : ",self.F*100.0)
+        
         self.publisher_.publish(actuator_msg)                                
         
         
@@ -258,6 +264,8 @@ class AuraMPC(Node):
 
 
     def run_DOB(self):
+        dob_state = self.states
+        dob_state[7] = self.dob_thrust
         self.state_estim, self.param_estim, self.param_filtered = DOB(self.states, self.state_estim, self.param_filtered, self.param_estim, self.DOB_dt)
              
         DOB_msg = Float64MultiArray()
