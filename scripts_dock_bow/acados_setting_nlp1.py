@@ -23,8 +23,8 @@ def export_heron_model_nlp1() -> AcadosModel:
     bu=  1.74/500.0
     b2 = 0.045/500.0
     b3 = 0.574
-    F_bow = 0.1
-    F_l = 2.0
+    F_bow = 0.02
+    F_l = 3.0
 
     # set up states & controls
     xn   = SX.sym('xn')
@@ -161,7 +161,7 @@ def setup_trajectory_tracking_nlp1(x0, N_horizon, Tf, Q_mat, Q_mat_terminal, R_m
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
     ocp.cost.W_e = Q_mat_terminal
 
-    x_e = model.x - [10.0, 0, 0, 0, 0, 0, 0, 0]
+    x_e = model.x - [0.0, 0, 0, 0, 0, 0, 0, 0]
 
     ocp.model.cost_expr_ext_cost = x_e.T @ Q_mat @ x_e + model.u.T @ R_mat @ model.u
     ocp.model.cost_expr_ext_cost_e = x_e.T @ Q_mat_terminal @ x_e

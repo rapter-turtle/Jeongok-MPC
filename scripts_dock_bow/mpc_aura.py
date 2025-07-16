@@ -45,10 +45,10 @@ class AuraMPC(Node):
         self.N = 30 # prediction horizon
         self.con_dt = 0.5 # control sampling time
 
-        Q_mat = 1*np.diag([1e0, 1e0, 1e1, 1e1, 1e1, 1e-2, 0, 0])
-        Q_mat_terminal = 40*np.diag([1e0, 1e0, 1e3, 1e3, 1e3, 1e3, 0, 0])
-        R_mat1 = 1*np.diag([1e-1, 1e-2, 1e0])
-        R_mat2 = 1*np.diag([1e-1, 1e-2])        
+        Q_mat = 1*np.diag([1e0, 1e0, 1e3, 1e2, 1e2, 1e-2, 0, 0])
+        Q_mat_terminal = 20*np.diag([1e1, 1e1, 1e3, 1e3, 1e3, 1e3, 0, 0])
+        R_mat1 = 1*np.diag([1e-1, 1e-1, 1e1])
+        R_mat2 = 1*np.diag([1e-1, 1e-1])        
         self.ocp_solver_nlp1 = setup_trajectory_tracking_nlp1(self.states, self.N, self.Tf, Q_mat, Q_mat_terminal, R_mat1)
         self.ocp_solver_nlp2 = setup_trajectory_tracking_nlp2(self.states, self.N, self.Tf, Q_mat, Q_mat_terminal, R_mat2)
 
@@ -226,6 +226,7 @@ class AuraMPC(Node):
             con = self.ocp_solver_nlp1.get(j,"u")
             # print(con)
             bow_array[j] = con[2]
+        # bow_array[0] = self.bow_switch    
             # print(self.ocp_solver_nlp1.get(j,"u"))
         # print(bow_array)
 
@@ -235,28 +236,30 @@ class AuraMPC(Node):
         #################################### CIA ####################################
         
         model = Model("bow_mapping")
-        dwell_time = 1.0
+        dwell_time = 2.0
         stop_dwell_time = 2.0
-        # CIA_bow_array = bow_mapping(model, bow_array, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
+        CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
         
        
+
         dwell_len = int(dwell_time / self.con_dt)
         stop_dwell_len = int(stop_dwell_time / self.con_dt)
         
         if self.count_on_left <= dwell_len - 1 and self.bow_switch > 0.1:
             self.count_on_left += 1
             start_idx = dwell_len - self.count_on_left 
-            input_bow_array = bow_mapping(model, bow_array[start_idx:], self.con_dt, len(bow_array[start_idx:]),
+            input_bow_array = bow_mapping(model, bow_array[start_idx:], self.bow_switch,self.con_dt, len(bow_array[start_idx:]),
                                         dwell_time, stop_dwell_time)
             CIA_bow_array = np.concatenate([np.ones(start_idx), input_bow_array])
 
             self.count_on_right = 0
             self.count_on_zero = 0
 
+
         elif self.count_on_right <= dwell_len - 1 and self.bow_switch < -0.1:
             self.count_on_right += 1
             start_idx = dwell_len - self.count_on_right 
-            input_bow_array = bow_mapping(model, bow_array[start_idx:], self.con_dt, len(bow_array[start_idx:]),
+            input_bow_array = bow_mapping(model, bow_array[start_idx:], self.bow_switch,self.con_dt, len(bow_array[start_idx:]),
                                         dwell_time, stop_dwell_time)
             CIA_bow_array = np.concatenate([-np.ones(start_idx), input_bow_array])
 
@@ -265,23 +268,29 @@ class AuraMPC(Node):
 
         elif self.count_on_zero <= stop_dwell_len - 1 and self.bow_switch == 0.0:
             self.count_on_zero += 1
-            start_idx = stop_dwell_len - self.count_on_zero 
-            input_bow_array = bow_mapping(model, bow_array[start_idx:], self.con_dt, len(bow_array[start_idx:]),
+            start_idx = dwell_len - self.count_on_zero 
+            input_bow_array = bow_mapping(model, bow_array[start_idx:], self.bow_switch,self.con_dt, len(bow_array[start_idx:]),
                                         dwell_time, stop_dwell_time)
             CIA_bow_array = np.concatenate([np.zeros(start_idx), input_bow_array])
 
             self.count_on_left = 0
             self.count_on_right = 0
 
-        else:
-            self.count_on_left = 0
+
+        elif self.count_on_right >= dwell_len and self.bow_switch > 0.1:
             self.count_on_right = 0
+
+        elif self.count_on_left >= dwell_len and self.bow_switch < -0.1:
+            self.count_on_left = 0
+
+        elif self.count_on_left >= stop_dwell_len and self.bow_switch != -0.1:
             self.count_on_zero = 0
-            input_bow_array = bow_array
-            CIA_bow_array = bow_mapping(model, input_bow_array, self.con_dt, len(bow_array),
-                                    dwell_time, stop_dwell_time)       
+
         # print(bow_array)          
-        print(CIA_bow_array[0])        
+        print(CIA_bow_array) 
+
+
+       
         #################################### 2nd NLP ####################################
         
         ##### Obstacle Position ######
@@ -310,7 +319,7 @@ class AuraMPC(Node):
         self.F += del_con[1]*self.con_dt
         self.bow_switch = CIA_bow_array[0]
 
-        self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
+        # self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
 
         self.delta_pwm = self.convert_steering_to_pwm(self.delta)
@@ -331,7 +340,7 @@ class AuraMPC(Node):
         mpc_data_stack.sampling_time = self.con_dt
         mpc_data_stack.cpu_time = t_preparation + t_feedback	
         mpc_data_stack.ref_num = 0.0	
-        mpc_data_stack.ref_dt = 100.0	
+        mpc_data_stack.ref_dt = 200.0	
         mpc_data_stack.traj_x = dock_x + ship_state_x
         mpc_data_stack.traj_y = dock_y + ship_state_y
         mpc_data_stack.theta = dock_psi	

@@ -23,8 +23,8 @@ def export_heron_model() -> AcadosModel:
     bu=  1.74/500.0
     b2 = 0.045/500.0
     b3 = 0.574
-    F_bow = 0.1
-    F_l = 2.0
+    F_bow = 0.02
+    F_l = 3.0
 
     # set up states & controls
     xn   = SX.sym('xn')
@@ -38,11 +38,12 @@ def export_heron_model() -> AcadosModel:
     F  = SX.sym('F')
     B  = SX.sym('B')
 
-    states = vertcat(xn, yn, psi, u, v, r, delta, F)
+    states = vertcat(xn, yn, psi, u, v, r, delta, F, B)
 
     delta_d  = SX.sym('delta_d')
     F_d  = SX.sym('F_d')
-    inputs  = vertcat(delta_d, F_d, B)
+    B_d  = SX.sym('B_d')
+    inputs  = vertcat(delta_d, F_d, B_d)
 
     # xdot
     xn_dot  = SX.sym('xn_dot')
@@ -53,6 +54,7 @@ def export_heron_model() -> AcadosModel:
     r_dot   = SX.sym('r_dot')
     delta_dot   = SX.sym('delta_dot')
     F_dot   = SX.sym('F_dot')
+    B_dot   = SX.sym('B_dot')
 
     # set up parameters
     ox1 = SX.sym('ox1') 
@@ -68,14 +70,16 @@ def export_heron_model() -> AcadosModel:
                 ox2, oy2, or2)
     
     
-    states_dot = vertcat(xn_dot, yn_dot, psi_dot, u_dot, v_dot, r_dot, delta_dot, F_dot)
+    states_dot = vertcat(xn_dot, yn_dot, psi_dot, u_dot, v_dot, r_dot, delta_dot, F_dot, B_dot)
 
 
     # Deadzone
     s = 25
     k = 8
-    a1 = 2.2*2.2
-    a2 = 2.2*2.2
+    # a1 = 2.2*2.2
+    # a2 = 2.2*2.2
+    a1 = 4.0
+    a2 = 4.0    
     b11 = 1.0
     b22 = 1.0
 
@@ -90,7 +94,8 @@ def export_heron_model() -> AcadosModel:
                      ( -Yv*v - Yr*r + T*sin(b2*delta) + F_bow*B),
                      ( - Nr*r - b3*T*sin(b2*delta) + F_l*F_bow*B),
                      delta_d,
-                     F_d
+                     F_d,
+                     B_d
                      )
     
     f_impl = states_dot - f_expl
@@ -143,15 +148,15 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.cost.cost_type_e = 'EXTERNAL'
 
     # Q_mat = 1*np.diag([0, 0, 0, 0, 0, 0, 1e-2, 1e-3])
-    Q_mat = 1*np.diag([1e0, 1e0, 1e3, 1e1, 1e1, 1e-2, 0, 0])
-    Q_mat_terminal = 40*np.diag([1e0, 1e0, 1e2, 1e3, 1e3, 1e3, 0, 0])
-    R_mat = 1*np.diag([1e-1, 1e-3, 1e2])
+    Q_mat = 1*np.diag([1e0, 1e0, 1e0, 1e1, 1e1, 1e-1, 0, 0, 1e0])
+    Q_mat_terminal = 40*np.diag([1e0, 1e0, 1e2, 1e3, 1e3, 1e3, 0, 0, 1e0])
+    R_mat = 1*np.diag([1e-1, 1e-2, 1e-1])
 
 
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
     ocp.cost.W_e = Q_mat_terminal
 
-    x_e = model.x - [10.0, 0, 0, 0, 0, 0, 0, 0]
+    x_e = model.x - [10.0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     ocp.model.cost_expr_ext_cost = x_e.T @ Q_mat @ x_e + model.u.T @ R_mat @ model.u
     ocp.model.cost_expr_ext_cost_e = x_e.T @ Q_mat_terminal @ x_e
@@ -187,16 +192,16 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.model.con_h_expr_e = ocp.model.con_h_expr
 
     # set constraints
-    ocp.constraints.lbu = np.array([-100.0,-3, -1])
-    ocp.constraints.ubu = np.array([+100.0,+3, +1])
+    ocp.constraints.lbu = np.array([-100.0,-3, -0.5])
+    ocp.constraints.ubu = np.array([+100.0,+3, +0.5])
     ocp.constraints.idxbu = np.array([0, 1, 2])
 
-    ocp.constraints.lbx = np.array([-250.0, -10.0])
-    ocp.constraints.ubx = np.array([250.0, 16.0])
-    ocp.constraints.idxbx = np.array([6, 7])
+    ocp.constraints.lbx = np.array([-250.0, -10.0,-1.0])
+    ocp.constraints.ubx = np.array([250.0, 16.0,1.0])
+    ocp.constraints.idxbx = np.array([6, 7, 8])
 
     ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' # FULL_CONDENSING_QPOASES
-    ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
+    # ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
     ocp.solver_options.integrator_type = 'IRK'#'ERK'
     ocp.solver_options.sim_method_newton_iter = 20
     ocp.solver_options.nlp_solver_type = 'SQP_RTI'

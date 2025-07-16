@@ -30,16 +30,17 @@ class AuraMPC(Node):
         self.x = ship_state_x
         self.y = ship_state_y
         self.p = self.u = self.v = self.r = 0.0
-        self.delta = self.F = 0.0
+        self.delta = self.F = self.Bow = 0.0
         self.delta_pwm = self.F_pwm = 1500.0
-        self.states = np.zeros(8)
+        self.states = np.zeros(9)
         self.thr = 0.0
         self.del_thr_max = 0.5
         self.dob_thrust = 0.0
         
+        
         # MPC parameter settings
-        self.Tf = 20 # prediction time 4 sec
-        self.N = 40 # prediction horizon
+        self.Tf = 15 # prediction time 4 sec
+        self.N = 30 # prediction horizon
         self.con_dt = 0.5 # control sampling time
         self.ocp_solver_nlp1 = setup_trajectory_tracking(self.states, self.N, self.Tf)
 
@@ -159,7 +160,7 @@ class AuraMPC(Node):
     def ekf_callback(self, msg):# - frequency = gps callback freq. 
         """Callback to update states from EKF estimated state."""
         self.x, self.y, self.p, self.u, self.v, self.r = msg.data[:6]
-        self.states = np.array([self.x-offset[0], self.y-offset[1], self.p, self.u, self.v, self.r, self.delta, self.F])
+        self.states = np.array([self.x-offset[0], self.y-offset[1], self.p, self.u, self.v, self.r, self.delta, self.F, self.Bow])
         self.a_dot_state = msg.data[6]
 
     def yaw_discontinuity(self, ref):
@@ -190,12 +191,7 @@ class AuraMPC(Node):
             real_dock = dock_x
             dock_psi = 0.0*3.141592/180
 
-            dock_psi = self.yaw_discontinuity(dock_psi)
-            yref = np.hstack((real_dock,dock_y,dock_psi,0,0,0,0,0,0,0,0))
-            if j == self.N:
-                yref = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0))
-            # self.ocp_solver_nlp1.cost_set(j, "yref", yref)
-        
+
         
         ##### Obstacle Position ######
         obs_pos = np.array([dock_x, dock_y, dock_psi,  # Obstacle-1: x, y, radius
@@ -228,18 +224,20 @@ class AuraMPC(Node):
         del_con = self.ocp_solver_nlp1.get(0, "u")
         self.delta += del_con[0]*self.con_dt
         self.F += del_con[1]*self.con_dt
+        self.Bow += del_con[2]*self.con_dt
 
         self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
         # self.delta = 0.0
-        # self.F = 2.2*2.2
+        # self.F = 0.0
+        # self.Bow = 1.0
         self.delta_pwm = self.convert_steering_to_pwm(self.delta)
         self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
         actuator_msg = Float64MultiArray()
-        actuator_msg.data = [self.delta_pwm, self.F_pwm, del_con[2], 0.0]
+        actuator_msg.data = [self.delta_pwm, self.F_pwm, self.Bow, 0.0]
         # print("thrust d : ",del_con[1], "F : ", self.F*100.0)
 
-        print(del_con[2])
+        print(self.Bow)
         self.publisher_.publish(actuator_msg)                                
         
 
