@@ -50,6 +50,7 @@ class AuraMPC(Node):
         self.param_filtered = np.array([0.0, 0.0, 0.0])
         self.param_estim = np.array([0.0, 0.0, 0.0])
         self.DOB_dt = 0.1
+        self.start_time = time.time()
 
 
         # reference trajectory generation
@@ -148,118 +149,120 @@ class AuraMPC(Node):
     def run(self):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
-        t = time.time()
-        ##### Reference States ######
-        for j in range(self.N+1):
-            dock_x = 30.0
-            dock_y = -0.0
-            real_dock = dock_x
-            dock_psi = 0.0*3.141592/180
+        print("prepare time : ",time.time() - self.start_time)
+        if time.time() - self.start_time > 10:                
+            t = time.time()
+            ##### Reference States ######
+            for j in range(self.N+1):
+                dock_x = 30.0
+                dock_y = -0.0
+                real_dock = dock_x
+                dock_psi = 0.0*3.141592/180
 
-            dock_psi = self.yaw_discontinuity(dock_psi)
-            yref = np.hstack((real_dock,dock_y,dock_psi,0,0,0,0,0,0,0))
-            if j == self.N:
-                yref = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0))
-            self.ocp_solver.cost_set(j, "yref", yref)
+                dock_psi = self.yaw_discontinuity(dock_psi)
+                yref = np.hstack((real_dock,dock_y,dock_psi,0,0,0,0,0,0,0))
+                if j == self.N:
+                    yref = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0))
+                self.ocp_solver.cost_set(j, "yref", yref)
+            
+            
+            ##### Obstacle Position ######
+            obs_pos = np.array([dock_x, dock_y + 2, dock_psi,  # Obstacle-1: x, y, radius
+                                self.A, self.B, self.C, 
+                                # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
+                                self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]) # Obstacle-2: x, y, radius
+            
+            for j in range(self.N+1):
+                self.ocp_solver.set(j, "p", obs_pos)
         
-        
-        ##### Obstacle Position ######
-        obs_pos = np.array([dock_x, dock_y + 2, dock_psi,  # Obstacle-1: x, y, radius
-                            self.A, self.B, self.C, 
-                            # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
-                            self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]) # Obstacle-2: x, y, radius
-        
-        for j in range(self.N+1):
-            self.ocp_solver.set(j, "p", obs_pos)
-    
-        # do stuff
-        elapsed = time.time() - t
-        # print(elapsed)
-        
-        
-        # preparation phase
-        self.ocp_solver.options_set('rti_phase', 1)
-        status = self.ocp_solver.solve()
-        t_preparation = self.ocp_solver.get_stats('time_tot')
+            # do stuff
+            elapsed = time.time() - t
+            # print(elapsed)
+            
+            
+            # preparation phase
+            self.ocp_solver.options_set('rti_phase', 1)
+            status = self.ocp_solver.solve()
+            t_preparation = self.ocp_solver.get_stats('time_tot')
 
-        # set initial state
-        self.ocp_solver.set(0, "lbx", self.states)
-        self.ocp_solver.set(0, "ubx", self.states)
+            # set initial state
+            self.ocp_solver.set(0, "lbx", self.states)
+            self.ocp_solver.set(0, "ubx", self.states)
 
-        # feedback phase
-        self.ocp_solver.options_set('rti_phase', 2)
-        status = self.ocp_solver.solve()
-        t_feedback = self.ocp_solver.get_stats('time_tot')
+            # feedback phase
+            self.ocp_solver.options_set('rti_phase', 2)
+            status = self.ocp_solver.solve()
+            t_feedback = self.ocp_solver.get_stats('time_tot')
 
-        # obtain mpc input
-        del_con = self.ocp_solver.get(0, "u")
-        self.delta += del_con[0]*self.con_dt
-        self.F += del_con[1]*self.con_dt
+            # obtain mpc input
+            del_con = self.ocp_solver.get(0, "u")
+            self.delta += del_con[0]*self.con_dt
+            self.F += del_con[1]*self.con_dt
 
-        self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
+            self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
 
-        self.delta_pwm = self.convert_steering_to_pwm(self.delta)
-        self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
-        actuator_msg = Float64MultiArray()
-        actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
-        # print("thrust d : ",del_con[1], "F : ", self.F*100.0)
-        # print("steer : ",self.delta, "thrust : ",self.F*100.0)
-        
-        self.publisher_.publish(actuator_msg)                                
-        
-        
-        # Publish predicted states and reference states
-        mpc_data_stack = MPCTraj()
-        # mpc_data_stack.header.stamp = self.get_clock()
-        mpc_data_stack.pred_num = float(self.N)
-        mpc_data_stack.sampling_time = self.con_dt
-        mpc_data_stack.cpu_time = t_preparation + t_feedback	
-        mpc_data_stack.ref_num = 0.0	
-        mpc_data_stack.ref_dt = 100.0	
-        mpc_data_stack.traj_x = dock_x + ship_state_x
-        mpc_data_stack.traj_y = dock_y + ship_state_y
-        mpc_data_stack.theta = dock_psi	
-        mpc_data_stack.a = self.A
-        mpc_data_stack.b = self.B	
-        mpc_data_stack.c = self.C	
-        
-        for j in range(self.N+1):
-            mpc_pred = MPCState()
-            mpc_ref = MPCState()
-            mpc_pred.x = self.ocp_solver.get(j, "x")[0]+offset[0]
-            mpc_pred.y = self.ocp_solver.get(j, "x")[1]+offset[1]
-            mpc_pred.p = self.ocp_solver.get(j, "x")[2]
-            mpc_pred.u = self.ocp_solver.get(j, "x")[3]
-            mpc_pred.v = self.ocp_solver.get(j, "x")[4]
-            mpc_pred.r = self.ocp_solver.get(j, "x")[5]
-            mpc_pred.delta = self.ocp_solver.get(j, "x")[6]
-            mpc_pred.f = self.ocp_solver.get(j, "x")[7]
-            mpc_data_stack.state.append(mpc_pred)            
-            # print(mpc_pred.u)
-            mpc_ref.x = self.ocp_solver.get(j, "x")[0]+offset[0]
-            mpc_ref.y = self.ocp_solver.get(j, "x")[1]+offset[1]
-            mpc_ref.p = 0.0
-            mpc_ref.u = 0.0
-            mpc_ref.v = 0.0
-            mpc_ref.r = 0.0
-            mpc_ref.delta = 0.0
-            mpc_ref.f = 0.0
-            mpc_data_stack.ref.append(mpc_ref)            
+            self.delta_pwm = self.convert_steering_to_pwm(self.delta)
+            self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
+            actuator_msg = Float64MultiArray()
+            actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
+            # print("thrust d : ",del_con[1], "F : ", self.F*100.0)
+            # print("steer : ",self.delta, "thrust : ",self.F*100.0)
+            
+            self.publisher_.publish(actuator_msg)                                
+            
+            
+            # Publish predicted states and reference states
+            mpc_data_stack = MPCTraj()
+            # mpc_data_stack.header.stamp = self.get_clock()
+            mpc_data_stack.pred_num = float(self.N)
+            mpc_data_stack.sampling_time = self.con_dt
+            mpc_data_stack.cpu_time = t_preparation + t_feedback	
+            mpc_data_stack.ref_num = 0.0	
+            mpc_data_stack.ref_dt = 100.0	
+            mpc_data_stack.traj_x = dock_x + ship_state_x
+            mpc_data_stack.traj_y = dock_y + ship_state_y
+            mpc_data_stack.theta = dock_psi	
+            mpc_data_stack.a = self.A
+            mpc_data_stack.b = self.B	
+            mpc_data_stack.c = self.C	
+            
+            for j in range(self.N+1):
+                mpc_pred = MPCState()
+                mpc_ref = MPCState()
+                mpc_pred.x = self.ocp_solver.get(j, "x")[0]+offset[0]
+                mpc_pred.y = self.ocp_solver.get(j, "x")[1]+offset[1]
+                mpc_pred.p = self.ocp_solver.get(j, "x")[2]
+                mpc_pred.u = self.ocp_solver.get(j, "x")[3]
+                mpc_pred.v = self.ocp_solver.get(j, "x")[4]
+                mpc_pred.r = self.ocp_solver.get(j, "x")[5]
+                mpc_pred.delta = self.ocp_solver.get(j, "x")[6]
+                mpc_pred.f = self.ocp_solver.get(j, "x")[7]
+                mpc_data_stack.state.append(mpc_pred)            
+                # print(mpc_pred.u)
+                mpc_ref.x = self.ocp_solver.get(j, "x")[0]+offset[0]
+                mpc_ref.y = self.ocp_solver.get(j, "x")[1]+offset[1]
+                mpc_ref.p = 0.0
+                mpc_ref.u = 0.0
+                mpc_ref.v = 0.0
+                mpc_ref.r = 0.0
+                mpc_ref.delta = 0.0
+                mpc_ref.f = 0.0
+                mpc_data_stack.ref.append(mpc_ref)            
 
 
-        obs_state = ObsState()
-        obs_state.x   = obs_pos[0]+offset[0]
-        obs_state.y   = obs_pos[1]+offset[1]
-        obs_state.rad = obs_pos[2]
-        mpc_data_stack.obs.append(obs_state)
-        obs_state = ObsState()
-        obs_state.x   = obs_pos[3]
-        obs_state.y   = obs_pos[4]
-        obs_state.rad = obs_pos[5]
-        mpc_data_stack.obs.append(obs_state)        
+            obs_state = ObsState()
+            obs_state.x   = obs_pos[0]+offset[0]
+            obs_state.y   = obs_pos[1]+offset[1]
+            obs_state.rad = obs_pos[2]
+            mpc_data_stack.obs.append(obs_state)
+            obs_state = ObsState()
+            obs_state.x   = obs_pos[3]
+            obs_state.y   = obs_pos[4]
+            obs_state.rad = obs_pos[5]
+            mpc_data_stack.obs.append(obs_state)        
 
-        self.mpcvis_pub.publish(mpc_data_stack)
+            self.mpcvis_pub.publish(mpc_data_stack)
         
 
 

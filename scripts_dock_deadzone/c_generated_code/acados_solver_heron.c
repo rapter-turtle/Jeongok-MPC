@@ -456,7 +456,7 @@ void heron_acados_create_5_set_nlp_in(heron_solver_capsule* capsule, const int N
    double* W_0 = calloc(NY0*NY0, sizeof(double));
     // change only the non-zero elements:
     W_0[0+(NY0) * 0] = 1;
-    W_0[1+(NY0) * 1] = 1000;
+    W_0[1+(NY0) * 1] = 100;
     W_0[2+(NY0) * 2] = 10;
     W_0[3+(NY0) * 3] = 100;
     W_0[4+(NY0) * 4] = 100;
@@ -476,7 +476,7 @@ void heron_acados_create_5_set_nlp_in(heron_solver_capsule* capsule, const int N
     double* W = calloc(NY*NY, sizeof(double));
     // change only the non-zero elements:
     W[0+(NY) * 0] = 1;
-    W[1+(NY) * 1] = 1000;
+    W[1+(NY) * 1] = 100;
     W[2+(NY) * 2] = 10;
     W[3+(NY) * 3] = 100;
     W[4+(NY) * 4] = 100;
@@ -526,18 +526,18 @@ void heron_acados_create_5_set_nlp_in(heron_solver_capsule* capsule, const int N
     double* zl = zlumem+NS*2;
     double* zu = zlumem+NS*3;
     // change only the non-zero elements:
-    Zl[0] = 10000;
-    Zl[1] = 10000;
-    Zl[2] = 10000;
-    Zu[0] = 10000;
-    Zu[1] = 10000;
-    Zu[2] = 10000;
-    zl[0] = 10000;
-    zl[1] = 10000;
-    zl[2] = 10000;
-    zu[0] = 10000;
-    zu[1] = 10000;
-    zu[2] = 10000;
+    Zl[0] = 100000;
+    Zl[1] = 100000;
+    Zl[2] = 100000;
+    Zu[0] = 100000;
+    Zu[1] = 100000;
+    Zu[2] = 100000;
+    zl[0] = 100000;
+    zl[1] = 100000;
+    zl[2] = 100000;
+    zu[0] = 100000;
+    zu[1] = 100000;
+    zu[2] = 100000;
 
     for (int i = 1; i < N; i++)
     {
@@ -558,24 +558,24 @@ void heron_acados_create_5_set_nlp_in(heron_solver_capsule* capsule, const int N
 
     // change only the non-zero elements:
     
-    Zl_e[0] = 10000;
-    Zl_e[1] = 10000;
-    Zl_e[2] = 10000;
+    Zl_e[0] = 100000;
+    Zl_e[1] = 100000;
+    Zl_e[2] = 100000;
 
     
-    Zu_e[0] = 10000;
-    Zu_e[1] = 10000;
-    Zu_e[2] = 10000;
+    Zu_e[0] = 100000;
+    Zu_e[1] = 100000;
+    Zu_e[2] = 100000;
 
     
-    zl_e[0] = 10000;
-    zl_e[1] = 10000;
-    zl_e[2] = 10000;
+    zl_e[0] = 100000;
+    zl_e[1] = 100000;
+    zl_e[2] = 100000;
 
     
-    zu_e[0] = 10000;
-    zu_e[1] = 10000;
-    zu_e[2] = 10000;
+    zu_e[0] = 100000;
+    zu_e[1] = 100000;
+    zu_e[2] = 100000;
 
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "Zl", Zl_e);
     ocp_nlp_cost_model_set(nlp_config, nlp_dims, nlp_in, N, "Zu", Zu_e);
