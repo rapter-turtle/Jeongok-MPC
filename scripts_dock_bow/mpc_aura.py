@@ -41,8 +41,8 @@ class AuraMPC(Node):
         self.dob_thrust = 0.0
         
         # MPC parameter settings
-        self.Tf = 15 # prediction time 4 sec
-        self.N = 30 # prediction horizon
+        self.Tf = 20 # prediction time 4 sec
+        self.N = 40 # prediction horizon
         self.con_dt = 0.5 # control sampling time
 
         Q_mat = 1*np.diag([1e0, 1e0, 1e3, 1e2, 1e2, 1e-2, 0, 0])
@@ -221,16 +221,17 @@ class AuraMPC(Node):
         t_feedback = self.ocp_solver_nlp1.get_stats('time_tot')
 
         # obtain mpc input
+        # bow_array_0 = np.zeros(self.N)
+        # for j in range(self.N):
+        #     con = self.ocp_solver_nlp1.get(j,"u")
+        #     # print(con)
+        #     bow_array_0[j] = con[2]
+
         bow_array = np.zeros(self.N)
         for j in range(self.N):
             con = self.ocp_solver_nlp1.get(j,"u")
             # print(con)
             bow_array[j] = con[2]
-        # bow_array[0] = self.bow_switch    
-            # print(self.ocp_solver_nlp1.get(j,"u"))
-        # print(bow_array)
-
-        # self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
 
         #################################### CIA ####################################
@@ -238,10 +239,14 @@ class AuraMPC(Node):
         model = Model("bow_mapping")
         dwell_time = 2.0
         stop_dwell_time = 2.0
-        CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
+        CIA_time = 1.0
         
-       
+        ### Preprocess
+        # bow_array = np.zeros(int(self.N/2))
+        # for i in range(int(self.N/2)):
+        #     bow_array[i] = 0.5*(bow_array_0[2*i] + bow_array_0[2*i+1])
 
+        ### CIA process
         dwell_len = int(dwell_time / self.con_dt)
         stop_dwell_len = int(stop_dwell_time / self.con_dt)
         
@@ -276,29 +281,38 @@ class AuraMPC(Node):
             self.count_on_left = 0
             self.count_on_right = 0
 
-
         elif self.count_on_right >= dwell_len and self.bow_switch > 0.1:
             self.count_on_right = 0
-
+            CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
+        
         elif self.count_on_left >= dwell_len and self.bow_switch < -0.1:
             self.count_on_left = 0
-
+            CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
+        
         elif self.count_on_left >= stop_dwell_len and self.bow_switch != -0.1:
             self.count_on_zero = 0
+            CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
+        
+        else:
+            CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
+
 
         # print(bow_array)          
-        print(CIA_bow_array) 
-
-
+        print(CIA_bow_array[0]) 
        
         #################################### 2nd NLP ####################################
         
         ##### Obstacle Position ######
         for j in range(self.N):
-
             obs_pos = np.array([CIA_bow_array[j], 0.0]) 
             self.ocp_solver_nlp2.set(j, "p", obs_pos)
     
+        # for j in range(int(self.N/2)):
+        #     obs_pos = np.array([CIA_bow_array[j], 0.0]) 
+        #     self.ocp_solver_nlp2.set(2*j, "p", obs_pos) 
+        #     self.ocp_solver_nlp2.set(2*j+1, "p", obs_pos)
+    
+
         # preparation phase
         self.ocp_solver_nlp2.options_set('rti_phase', 1)
         status = self.ocp_solver_nlp2.solve()
