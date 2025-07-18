@@ -2,7 +2,7 @@ from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 import scipy.linalg
 import numpy as np
 from acados_template import AcadosModel
-from casadi import SX, vertcat, sin, cos, sqrt
+from casadi import SX, vertcat, sin, cos, sqrt, exp, tanh
 
 def export_heron_model() -> AcadosModel:
     model_name = 'heron'
@@ -71,26 +71,49 @@ def export_heron_model() -> AcadosModel:
     
     states_dot = vertcat(xn_dot, yn_dot, psi_dot, u_dot, v_dot, r_dot, delta_dot, F_dot)
 
+    s = 25
+    k = 8
+    # s = 25
+    # k = 1
+    a1 = 2.2*2.2
+    a2 = 2.2*2.2
+    b11 = 1.0
+    b22 = 1.0
+ 
+    T = ((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
+
+
     eps = 0.00001
     # dynamics
     f_expl = vertcat(u*cos(psi) - v*sin(psi),
                      u*sin(psi) + v*cos(psi),
                      r,
-                     ( - Xu*u - Xuu * sqrt(u * u + eps) * u + 0.01*F*cos(bu*delta))/(M + Xu_dot) - du,
-                     ( -Yv*v - Yr*r + 0.01*F*sin(b2*delta)) - dv,
-                     ( - Nr*r - b3*0.01*F*sin(b2*delta)) - dr,
+                     ( - Xu*u - Xuu * sqrt(u * u + eps) * u + T*cos(bu*delta))/(M + Xu_dot) - du,
+                     ( -Yv*v - Yr*r + T*sin(b2*delta)) - dv,
+                     ( - Nr*r - b3*T*sin(b2*delta)) - dr,
                      delta_d,
                      F_d
                      )
+
 
     f_impl = states_dot - f_expl
 
 
     num_obs = 2
+    alpha = 0.2
+
+    h1 = (xn-ox1) ** 2 + (yn - oy1) ** 2 - or1**2
+    h2 = (xn-ox2) ** 2 + (yn - oy2) ** 2 - or2**2
+    h1_dot = 2*(xn-ox1)*(u*cos(psi) - v*sin(psi)) + 2*(yn - oy1)*(u*sin(psi) + v*cos(psi))
+    h2_dot = 2*(xn-ox2)*(u*cos(psi) - v*sin(psi)) + 2*(yn - oy2)*(u*sin(psi) + v*cos(psi))
+
+
 
     h_expr = SX.zeros(num_obs,1)
-    h_expr[0] = (xn-ox1) ** 2 + (yn - oy1) ** 2 - or1**2
-    h_expr[1] = (xn-ox2) ** 2 + (yn - oy2) ** 2 - or2**2
+    # h_expr[0] = h1
+    # h_expr[1] = h2
+    h_expr[0] = h1*alpha + h1_dot
+    h_expr[1] = h2*alpha + h2_dot
     
 
 
@@ -131,11 +154,12 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.cost.cost_type = 'NONLINEAR_LS'
     ocp.cost.cost_type_e = 'NONLINEAR_LS'
 
-    Q_mat = 2*np.diag([10, 10, 1e-5, 0.0, 0.0, 0.0, 1e-1, 1e-3])
+    Q_mat = 2*np.diag([1e1, 1e1, 1e-2, 0.0, 0.0, 0.0, 1e-2, 1e-3])
     R_mat = 2*np.diag([1e0, 1e-1])
+    Q_mat_term = 2*np.diag([1e1, 1e1, 1e-2, 0.0, 0.0, 0.0, 1e-2, 1e-3])
 
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
-    ocp.cost.W_e = Q_mat
+    ocp.cost.W_e = Q_mat_term
 
     ocp.model.cost_y_expr = vertcat(model.x, model.u)
     ocp.model.cost_y_expr_e = model.x
@@ -176,18 +200,18 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.model.con_h_expr_e = ocp.model.con_h_expr
 
     # set constraints
-    ocp.constraints.lbu = np.array([-100.0,-100])
-    ocp.constraints.ubu = np.array([+100.0,+100])
+    ocp.constraints.lbu = np.array([-50,-4.0])
+    ocp.constraints.ubu = np.array([+50,+4.0])
     ocp.constraints.idxbu = np.array([0, 1])
 
-    ocp.constraints.lbx = np.array([-250.0, -400])
-    ocp.constraints.ubx = np.array([250.0, 1600.0])
+    ocp.constraints.lbx = np.array([-250, -16.0])
+    ocp.constraints.ubx = np.array([250, 16.0])
     ocp.constraints.idxbx = np.array([6, 7])
 
     ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' # FULL_CONDENSING_QPOASES
     ocp.solver_options.hessian_approx = 'GAUSS_NEWTON'
     ocp.solver_options.integrator_type = 'IRK'
-    ocp.solver_options.sim_method_newton_iter = 100
+    ocp.solver_options.sim_method_newton_iter = 50
     ocp.solver_options.nlp_solver_type = 'SQP_RTI'
     ocp.solver_options.qp_solver_cond_N = N_horizon
 

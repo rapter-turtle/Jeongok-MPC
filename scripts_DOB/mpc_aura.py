@@ -33,10 +33,11 @@ class AuraMPC(Node):
         self.delta = self.F = 0.0
         self.delta_pwm = self.F_pwm = 1500.0
         self.states = np.zeros(8)
+        self.thr = 0.0
         
         # MPC parameter settings
-        self.Tf = 20 # prediction time 4 sec
-        self.N = 40 # prediction horizon
+        self.Tf = 15 # prediction time 4 sec
+        self.N = 30 # prediction horizon
         self.con_dt = 0.5 # control sampling time
         self.ocp_solver = setup_trajectory_tracking(self.states, self.N, self.Tf)
 
@@ -46,14 +47,15 @@ class AuraMPC(Node):
         self.param_filtered = np.array([0.0, 0.0, 0.0])
         self.param_estim = np.array([0.0, 0.0, 0.0])
         self.DOB_dt = 0.1
-
+        self.dob_thrust = 0.0
+        self.start_time = time.time()
 
         # reference trajectory generation
         self.A = 150.0
         self.B = 100.0
-        self.C = 50.0
+        self.C = 30.0
         self.theta = np.pi/2
-        self.plot_traj_xy = (ship_state_x+10, ship_state_y+20)
+        self.plot_traj_xy = (ship_state_x+10, ship_state_y+30)
         
         self.ref_dt = 0.01
         self.ref_iter = int(self.con_dt/self.ref_dt)
@@ -72,7 +74,6 @@ class AuraMPC(Node):
 
     def convert_steering_to_pwm(self,steer):
         """Map steering value to PWM based on the given formula"""
-        pwm_center = 1500.0
 
         if steer >= 300.0:
             # Steer above 300 maps directly to PWM 2000
@@ -88,24 +89,40 @@ class AuraMPC(Node):
             return 1000.0
 
 
-    def convert_thrust_to_pwm(self, rpm_thrust):
+    def convert_thrust_to_pwm(self, rpm_thrust, thr):
         """Convert thrust level to PWM signal"""
 
-        if rpm_thrust <= 0:
-            thrust = -np.sqrt(-rpm_thrust)
+        thr_new = rpm_thrust
+
+        deadzone = 22.0*22.0
+        threshold = 100.0
+
+        if thr_new < threshold and thr_new > -threshold:
+            thrust_2 = 0.0 
+        else:        
+            thrust_2 = deadzone*np.sign(thr_new) + thr_new
+        
+
+        if thrust_2 <= 0.0 :
+            thrust = -np.sqrt(-(thrust_2))
+        elif thrust_2 >= 0.0:
+            thrust = np.sqrt(thrust_2)
         else:
-            thrust = np.sqrt(rpm_thrust)
-            
+            thrust = 0.0
+
+
+        dob_thrust = thrust
+
         if thrust < 0.0:
             pwm = 3.9 * thrust + 1450.0
-            return self.clamp(pwm, 1000.0, 1500.0)  # Any value <= 0 thrust maps to PWM 1000
+            return self.clamp(pwm, 1000.0, 1450.0), thr, dob_thrust  # Any value <= 0 thrust maps to PWM 1000
         else:
             # Calculate PWM based on the thrust
             pwm = 3.9 * thrust + 1550.0
-            # You can switch the formula if needed, using the commented one
-            # pwm = 5.0 * thrust + 1500
-            return self.clamp(pwm, 1500.0, 2000.0)  # Ensure PWM is within the bounds
+
+            return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
     
+
     def ekf_callback(self, msg):# - frequency = gps callback freq. 
         """Callback to update states from EKF estimated state."""
         self.x, self.y, self.p, self.u, self.v, self.r = msg.data[:6]
@@ -132,134 +149,145 @@ class AuraMPC(Node):
     def run(self):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
-    
-        t = time.time()
-        ##### Reference States ######
-        for j in range(self.N+1):
-            refs = self.reference[k+j,:]
-            refs[2] = self.yaw_discontinuity(refs[2])
-            yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],0,0,0,0,0,0,0))
-            if j == self.N:
-                yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],0,0,0,0,0))
-            self.ocp_solver.cost_set(j, "yref", yref)
+        if time.time() - self.start_time > 10:          
+            t = time.time()
+            ##### Reference States ######
+            for j in range(self.N+1):
+                refs = self.reference[k+j,:]
+                refs[2] = self.yaw_discontinuity(refs[2])
+                yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],0,0,0,0,0,0,0))
+                if j == self.N:
+                    yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],0,0,0,0,0))
+                self.ocp_solver.cost_set(j, "yref", yref)
+            
+
+            ##### Obstacle Position ######
+            # obs_pos = np.array([self.x+20-offset[0], self.y+40-offset[1], 3,  # Obstacle-1: x, y, radius
+            #                     self.x+-10-offset[0], self.y+20-offset[1], 4]) # Obstacle-2: x, y, radius
+
+            obs_pos = np.array([48.0, +100.0, 6.0,  # Obstacle-1: x, y, radius
+                                -32.0, -40.0, 8.0, # Obstacle-2: x, y, radius
+            # obs_pos = np.array([2500.0, +40.0, 6.0,  # Obstacle-1: x, y, radius
+            #                     -0.0, +1500.0, 8.0, 
+                                # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
+                                self.param_filtered[0],self.param_filtered[1],self.param_filtered[2]]) # Obstacle-2: x, y, radius
+            
+            for j in range(self.N+1):
+                self.ocp_solver.set(j, "p", obs_pos)
         
+            # do stuff
+            elapsed = time.time() - t
+            # print(elapsed)
+            
+            
+            # preparation phase
+            self.ocp_solver.options_set('rti_phase', 1)
+            status = self.ocp_solver.solve()
+            t_preparation = self.ocp_solver.get_stats('time_tot')
 
-        ##### Obstacle Position ######
-        # obs_pos = np.array([self.x+20-offset[0], self.y+40-offset[1], 3,  # Obstacle-1: x, y, radius
-        #                     self.x+-10-offset[0], self.y+20-offset[1], 4]) # Obstacle-2: x, y, radius
+            # set initial state
+            self.ocp_solver.set(0, "lbx", self.states)
+            self.ocp_solver.set(0, "ubx", self.states)
 
-        obs_pos = np.array([50.0, +80.0, 6.0,  # Obstacle-1: x, y, radius
-                            -15.0, -15.0, 8.0, # Obstacle-2: x, y, radius
-        # obs_pos = np.array([2500.0, +40.0, 6.0,  # Obstacle-1: x, y, radius
-        #                     -0.0, +1500.0, 8.0, 
-                            # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
-                            self.param_filtered[0],self.param_filtered[1],self.param_filtered[2]]) # Obstacle-2: x, y, radius
-        
-        for j in range(self.N+1):
-            self.ocp_solver.set(j, "p", obs_pos)
-    
-        # do stuff
-        elapsed = time.time() - t
-        print(elapsed)
-        
-        
-        # preparation phase
-        self.ocp_solver.options_set('rti_phase', 1)
-        status = self.ocp_solver.solve()
-        t_preparation = self.ocp_solver.get_stats('time_tot')
+            # feedback phase
+            self.ocp_solver.options_set('rti_phase', 2)
+            status = self.ocp_solver.solve()
+            t_feedback = self.ocp_solver.get_stats('time_tot')
 
-        # set initial state
-        self.ocp_solver.set(0, "lbx", self.states)
-        self.ocp_solver.set(0, "ubx", self.states)
+            # obtain mpc input
+            del_con = self.ocp_solver.get(0, "u")
+            self.delta += del_con[0]*self.con_dt
+            self.F += del_con[1]*self.con_dt
 
-        # feedback phase
-        self.ocp_solver.options_set('rti_phase', 2)
-        status = self.ocp_solver.solve()
-        t_feedback = self.ocp_solver.get_stats('time_tot')
-
-        # obtain mpc input
-        del_con = self.ocp_solver.get(0, "u")
-        self.delta += del_con[0]*self.con_dt
-        self.F += del_con[1]*self.con_dt
-
-        self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
+            self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
 
-        
-        # Publish the control inputs (e.g., thrust commands)
-        self.delta_pwm = self.convert_steering_to_pwm(self.delta)
-        self.F_pwm = self.convert_thrust_to_pwm(self.F)                        
-        actuator_msg = Float64MultiArray()
-        actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
-        print(del_con[0], del_con[1])
-        self.publisher_.publish(actuator_msg)                                
-        
-        
-        # Publish predicted states and reference states
-        mpc_data_stack = MPCTraj()
-        # mpc_data_stack.header.stamp = self.get_clock()
-        mpc_data_stack.pred_num = float(self.N)
-        mpc_data_stack.sampling_time = self.con_dt
-        mpc_data_stack.cpu_time = t_preparation + t_feedback	
-        mpc_data_stack.ref_num = 1000.0	
-        mpc_data_stack.ref_dt = self.ref_dt	
-        mpc_data_stack.traj_x = self.plot_traj_xy[0]	
-        mpc_data_stack.traj_y = self.plot_traj_xy[1]
-        mpc_data_stack.theta = self.theta	
-        mpc_data_stack.a = self.A	
-        mpc_data_stack.b = self.B	
-        mpc_data_stack.c = self.C	
-        
-        for j in range(self.N+1):
-            mpc_pred = MPCState()
-            mpc_ref = MPCState()
-            mpc_pred.x = self.ocp_solver.get(j, "x")[0]+offset[0]
-            mpc_pred.y = self.ocp_solver.get(j, "x")[1]+offset[1]
-            mpc_pred.p = self.ocp_solver.get(j, "x")[2]
-            mpc_pred.u = self.ocp_solver.get(j, "x")[3]
-            mpc_pred.v = self.ocp_solver.get(j, "x")[4]
-            mpc_pred.r = self.ocp_solver.get(j, "x")[5]
-            mpc_pred.delta = self.ocp_solver.get(j, "x")[6]
-            mpc_pred.f = self.ocp_solver.get(j, "x")[7]
-            mpc_data_stack.state.append(mpc_pred)            
-            # print(mpc_pred.u)
-            mpc_ref.x = self.reference[k+j,0]
-            mpc_ref.y = self.reference[k+j,1]
-            mpc_ref.p = self.reference[k+j,2]
-            mpc_ref.u = self.reference[k+j,3]
-            mpc_ref.v = 0.0
-            mpc_ref.r = self.reference[k+j,4]
-            mpc_ref.delta = 0.0
-            mpc_ref.f = 0.0
-            mpc_data_stack.ref.append(mpc_ref)            
+            
+            # Publish the control inputs (e.g., thrust commands)
+            self.delta_pwm = self.convert_steering_to_pwm(self.delta)
+            self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
+            actuator_msg = Float64MultiArray()
+            actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
+            print(del_con[0], del_con[1])
+            self.publisher_.publish(actuator_msg)                                
+            
+            
+            # Publish predicted states and reference states
+            mpc_data_stack = MPCTraj()
+            # mpc_data_stack.header.stamp = self.get_clock()
+            mpc_data_stack.pred_num = float(self.N)
+            mpc_data_stack.sampling_time = self.con_dt
+            mpc_data_stack.cpu_time = t_preparation + t_feedback	
+            mpc_data_stack.ref_num = 1000.0	
+            mpc_data_stack.ref_dt = self.ref_dt	
+            mpc_data_stack.traj_x = self.plot_traj_xy[0]	
+            mpc_data_stack.traj_y = self.plot_traj_xy[1]
+            mpc_data_stack.theta = self.theta	
+            mpc_data_stack.a = self.A	
+            mpc_data_stack.b = self.B	
+            mpc_data_stack.c = self.C	
+            
+            for j in range(self.N+1):
+                mpc_pred = MPCState()
+                mpc_ref = MPCState()
+                mpc_pred.x = self.ocp_solver.get(j, "x")[0]+offset[0]
+                mpc_pred.y = self.ocp_solver.get(j, "x")[1]+offset[1]
+                mpc_pred.p = self.ocp_solver.get(j, "x")[2]
+                mpc_pred.u = self.ocp_solver.get(j, "x")[3]
+                mpc_pred.v = self.ocp_solver.get(j, "x")[4]
+                mpc_pred.r = self.ocp_solver.get(j, "x")[5]
+                mpc_pred.delta = self.ocp_solver.get(j, "x")[6]
+                mpc_pred.f = self.ocp_solver.get(j, "x")[7]
+                mpc_data_stack.state.append(mpc_pred)            
+                # print(mpc_pred.u)
+                mpc_ref.x = self.reference[k+j,0]
+                mpc_ref.y = self.reference[k+j,1]
+                mpc_ref.p = self.reference[k+j,2]
+                mpc_ref.u = self.reference[k+j,3]
+                mpc_ref.v = 0.0
+                mpc_ref.r = self.reference[k+j,4]
+                mpc_ref.delta = 0.0
+                mpc_ref.f = 0.0
+                mpc_data_stack.ref.append(mpc_ref)            
 
 
-        obs_state = ObsState()
-        obs_state.x   = obs_pos[0]+offset[0]
-        obs_state.y   = obs_pos[1]+offset[1]
-        obs_state.rad = obs_pos[2]
-        mpc_data_stack.obs.append(obs_state)
-        obs_state = ObsState()
-        obs_state.x   = obs_pos[3]+offset[0]
-        obs_state.y   = obs_pos[4]+offset[1]
-        obs_state.rad = obs_pos[5]
-        mpc_data_stack.obs.append(obs_state)        
+            obs_state = ObsState()
+            obs_state.x   = obs_pos[0]+offset[0]
+            obs_state.y   = obs_pos[1]+offset[1]
+            obs_state.rad = obs_pos[2]
+            mpc_data_stack.obs.append(obs_state)
+            obs_state = ObsState()
+            obs_state.x   = obs_pos[3]+offset[0]
+            obs_state.y   = obs_pos[4]+offset[1]
+            obs_state.rad = obs_pos[5]
+            mpc_data_stack.obs.append(obs_state)        
 
-        self.mpcvis_pub.publish(mpc_data_stack)
-        
-        # Increment the index for the reference trajectory
-        self.k += 1
-        if self.k + self.N >= len(self.reference):
-            self.k = 0  # Reset the index if it goes beyond the reference length
+            self.mpcvis_pub.publish(mpc_data_stack)
+            
+            # Increment the index for the reference trajectory
+            self.k += 1
+            if self.k + self.N >= len(self.reference):
+                self.k = 0  # Reset the index if it goes beyond the reference length
+
+        else:
+            print("prepare time : ",time.time() - self.start_time)
+            self.ocp_solver.options_set('rti_phase', 1)
+            status = self.ocp_solver.solve()
+            t_preparation = self.ocp_solver.get_stats('time_tot')
+
+            # set initial state
+            self.ocp_solver.set(0, "lbx", self.states)
+            self.ocp_solver.set(0, "ubx", self.states)
 
 
     def run_DOB(self):
+        dob_state = self.states
+        dob_state[7] = self.dob_thrust
         self.state_estim, self.param_estim, self.param_filtered = DOB(self.states, self.state_estim, self.param_filtered, self.param_estim, self.DOB_dt)
              
         DOB_msg = Float64MultiArray()
         DOB_msg.data = [self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]
-        self.DOB_pub.publish(DOB_msg)                     
-        
+        self.DOB_pub.publish(DOB_msg)       
 
 
 def main(args=None):
