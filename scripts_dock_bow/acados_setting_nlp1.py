@@ -58,14 +58,10 @@ def export_heron_model_nlp1() -> AcadosModel:
     ox1 = SX.sym('ox1') 
     oy1 = SX.sym('oy1') 
     or1 = SX.sym('or1') 
-    ox2 = SX.sym('ox2') 
-    oy2 = SX.sym('oy2') 
-    or2 = SX.sym('or2') 
 
 
 
-    p = vertcat(ox1, oy1, or1, 
-                ox2, oy2, or2)
+    p = vertcat(ox1, oy1, or1)
     
     
     states_dot = vertcat(xn_dot, yn_dot, psi_dot, u_dot, v_dot, r_dot, delta_dot, F_dot)
@@ -108,12 +104,25 @@ def export_heron_model_nlp1() -> AcadosModel:
 
     num_obs = 2
 
+
     #docking
+    xh = xn + 4*cos(psi)
+    xb = xn - 1*cos(psi)
     yh = yn + 4*sin(psi)
     yb = yn - 1*sin(psi)
+
+    xh_rot = xh*cos(or1) - yh*sin(or1)
+    yh_rot = xh*sin(or1) + yh*cos(or1)
+    
+    xb_rot = xh*cos(or1) - yh*sin(or1)
+    yb_rot = xh*sin(or1) + yh*cos(or1)
+    
+    dock_end_x = ox1*cos(or1) - oy1*sin(or1)
+    dock_end_y = ox1*sin(or1) + oy1*cos(or1)
+
     h_expr = SX.zeros(num_obs,1)
-    h_expr[0] = 2#-yh + oy1 + 1
-    h_expr[1] = 2#-yb + oy1 + 1
+    h_expr[0] = -yh_rot + dock_end_y + 1
+    h_expr[1] = -yb_rot + dock_end_y + 1
     
     model = AcadosModel()
     model.con_h_expr = h_expr
@@ -149,8 +158,8 @@ def setup_trajectory_tracking_nlp1(x0, N_horizon, Tf, Q_mat, Q_mat_terminal, R_m
     ocp.dims.N = N_horizon
 
     # set cost module
-    ocp.cost.cost_type = 'EXTERNAL'
-    ocp.cost.cost_type_e = 'EXTERNAL'
+    ocp.cost.cost_type = 'NONLINEAR_LS'
+    ocp.cost.cost_type_e = 'NONLINEAR_LS'
 
     # Q_mat = 1*np.diag([0, 0, 0, 0, 0, 0, 1e-2, 1e-3])
     # Q_mat = 1*np.diag([1e0, 1e1, 1e3, 1e1, 1e1, 1e-2, 0, 0])
@@ -158,21 +167,29 @@ def setup_trajectory_tracking_nlp1(x0, N_horizon, Tf, Q_mat, Q_mat_terminal, R_m
     # R_mat = 1*np.diag([1e0, 1e-2, 1e2])
 
 
+    # ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
+    # ocp.cost.W_e = Q_mat_terminal
+
+    # x_e = model.x - [0.0, 0, 0, 0, 0, 0, 0, 0]
+
+    # ocp.model.cost_expr_ext_cost = x_e.T @ Q_mat @ x_e + model.u.T @ R_mat @ model.u
+    # ocp.model.cost_expr_ext_cost_e = x_e.T @ Q_mat_terminal @ x_e
+
+
+
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
     ocp.cost.W_e = Q_mat_terminal
 
-    x_e = model.x - [0.0, 0, 0, 0, 0, 0, 0, 0]
+    ocp.model.cost_y_expr = vertcat(model.x, model.u)
+    ocp.model.cost_y_expr_e = model.x
+    ocp.cost.yref  = np.zeros((ny, ))
+    ocp.cost.yref_e = np.zeros((ny_e, ))
 
-    ocp.model.cost_expr_ext_cost = x_e.T @ Q_mat @ x_e + model.u.T @ R_mat @ model.u
-    ocp.model.cost_expr_ext_cost_e = x_e.T @ Q_mat_terminal @ x_e
-    # ocp.cost.yref  = np.zeros((ny, ))
-    # ocp.cost.yref_e = np.zeros((ny_e, ))
 
     ocp.constraints.x0 = x0
 
 
-    ocp.parameter_values = np.array([0.0, 0.0, 0.0, 
-                                     0.0, 0.0, 0.0])
+    ocp.parameter_values = np.array([0.0, 0.0, 0.0])
 
     num_obs = 2
     ocp.constraints.uh = 1e10 * np.ones(num_obs)

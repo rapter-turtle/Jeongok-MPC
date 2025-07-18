@@ -52,6 +52,7 @@ class AuraMPC(Node):
         self.DOB_dt = 0.1
         self.start_time = time.time()
 
+        self.stop_switch = 0.0
 
         # reference trajectory generation
         self.A = 3.0
@@ -150,14 +151,14 @@ class AuraMPC(Node):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
         print("prepare time : ",time.time() - self.start_time)
-        if time.time() - self.start_time > 1:                
+        if time.time() - self.start_time > 10:                
             t = time.time()
             ##### Reference States ######
             for j in range(self.N+1):
                 dock_x = 30.0
                 dock_y = -0.0
                 real_dock = dock_x
-                dock_psi = 30.0*3.141592/180
+                dock_psi = 10.0*3.141592/180
 
                 dock_psi = self.yaw_discontinuity(dock_psi)
                 yref = np.hstack((real_dock,dock_y,dock_psi,0,0,0,0,0,0,0))
@@ -201,6 +202,11 @@ class AuraMPC(Node):
 
             self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
+            if np.sqrt((self.states[0]-dock_x)**2 + (self.states[1]-dock_y)**2)<2.0 and np.sqrt((self.states[3])**2 + (self.states[4])**2) < 1.0:
+                self.stop_switch = 1.0
+
+            if self.stop_switch == 1.0:
+                self.F = 0.0
 
             self.delta_pwm = self.convert_steering_to_pwm(self.delta)
             self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        

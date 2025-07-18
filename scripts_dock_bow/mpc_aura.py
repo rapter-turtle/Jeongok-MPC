@@ -17,7 +17,7 @@ ship_state_y = (4117065.30 + 4118523.52)*0.5
 traj_xy = (ship_state_x, ship_state_y)
 offset = np.array([ship_state_x, ship_state_y])
 
-
+ 
 
 class AuraMPC(Node):
     def __init__(self):
@@ -39,6 +39,7 @@ class AuraMPC(Node):
         self.thr = 0.0
         self.del_thr_max = 0.5
         self.dob_thrust = 0.0
+        self.stop_switch = 0.0
         
         # MPC parameter settings
         self.Tf = 20 # prediction time 4 sec
@@ -192,20 +193,31 @@ class AuraMPC(Node):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
         t = time.time()             
-        dock_x = 0.0
-        dock_y = 0.0
-        dock_psi = 0.0
+
+        for j in range(self.N+1):
+            dock_x = 0.0
+            dock_y = 0.0
+            dock_psi = -10.0*3.141592/180
+
+            dock_psi = self.yaw_discontinuity(dock_psi)
+            yref1 = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0,0,0,0))
+            yref2 = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0,0,0))
+            if j == self.N:
+                yref1 = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0))
+                yref2 = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0))
+            self.ocp_solver_nlp1.cost_set(j, "yref", yref1)
+            self.ocp_solver_nlp2.cost_set(j, "yref", yref2)
+
+
         #################################### 1st NLP ####################################
         
         ##### Obstacle Position ######
-        obs_pos = np.array([self.A, self.B, self.C,  # Obstacle-1: x, y, radius
-                            self.A, self.B, self.C]) # Obstacle-2: x, y, radius
+        obs_pos = np.array([dock_x, dock_y, dock_psi]) # Obstacle-2: x, y, radius
                             # self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]) # Obstacle-2: x, y, radius
         
         for j in range(self.N+1):
             self.ocp_solver_nlp1.set(j, "p", obs_pos)
     
-        
         # preparation phase
         self.ocp_solver_nlp1.options_set('rti_phase', 1)
         status = self.ocp_solver_nlp1.solve()
@@ -221,12 +233,6 @@ class AuraMPC(Node):
         t_feedback = self.ocp_solver_nlp1.get_stats('time_tot')
 
         # obtain mpc input
-        # bow_array_0 = np.zeros(self.N)
-        # for j in range(self.N):
-        #     con = self.ocp_solver_nlp1.get(j,"u")
-        #     # print(con)
-        #     bow_array_0[j] = con[2]
-
         bow_array = np.zeros(self.N)
         for j in range(self.N):
             con = self.ocp_solver_nlp1.get(j,"u")
@@ -304,13 +310,9 @@ class AuraMPC(Node):
         
         ##### Obstacle Position ######
         for j in range(self.N):
-            obs_pos = np.array([CIA_bow_array[j], 0.0]) 
+            obs_pos = np.array([dock_x, dock_y, dock_psi, CIA_bow_array[j]]) 
             self.ocp_solver_nlp2.set(j, "p", obs_pos)
     
-        # for j in range(int(self.N/2)):
-        #     obs_pos = np.array([CIA_bow_array[j], 0.0]) 
-        #     self.ocp_solver_nlp2.set(2*j, "p", obs_pos) 
-        #     self.ocp_solver_nlp2.set(2*j+1, "p", obs_pos)
     
 
         # preparation phase
@@ -335,6 +337,14 @@ class AuraMPC(Node):
 
         # self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
+
+        if np.sqrt((self.states[0]-dock_x)**2 + (self.states[1]-dock_y)**2) < 2.0:
+            self.stop_switch = 1.0
+
+        if self.stop_switch == 1.0:
+            self.F = 0.0
+            self.bow_switch = 0.0
+            print("end")
 
         self.delta_pwm = self.convert_steering_to_pwm(self.delta)
         self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
