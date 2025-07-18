@@ -124,18 +124,31 @@ def export_heron_model() -> AcadosModel:
     xh = xn + head_l*cos(psi)
     yh = yn + head_l*sin(psi)
     
+    # Rot
+    x_rot = xh*cos(or1) - yh*sin(or1)
+    y_rot = xh*sin(or1) + yh*cos(or1)
+    x_rot_dot = xh_dot*cos(or1) - yh_dot*sin(or1)
+    y_rot_dot = xh_dot*sin(or1) + yh_dot*cos(or1)
+
     # 1-tanh2
-
-    h_dock1 = 2.0 + 10.0*(1.0 - tanh(0.5*(xh - ox1 + 4))) - (yh - oy1)
-    h_dock2 = 2.0 + 10.0*(1.0 - tanh(0.5*(xh - ox1 + 4))) + (yh - oy1)
-    h_dock1_dot = -xh_dot*10.0*0.5*(1-tanh(0.5*(xh - ox1 + 4))*tanh(0.5*(xh - ox1 + 4))) + yh_dot
-    h_dock2_dot = -xh_dot*10.0*0.5*(1-tanh(0.5*(xh - ox1 + 4))*tanh(0.5*(xh - ox1 + 4))) - yh_dot
+    # h_dock1 = 2.0 + 10.0*(1.0 - tanh(0.5*(xh - ox1 + 4))) - (yh - oy1)
+    # h_dock2 = 2.0 + 10.0*(1.0 - tanh(0.5*(xh - ox1 + 4))) + (yh - oy1)
+    # h_dock1_dot = -xh_dot*10.0*0.5*(1-tanh(0.5*(xh - ox1 + 4))*tanh(0.5*(xh - ox1 + 4))) + yh_dot
+    # h_dock2_dot = -xh_dot*10.0*0.5*(1-tanh(0.5*(xh - ox1 + 4))*tanh(0.5*(xh - ox1 + 4))) - yh_dot
     
+    dock_end_x = ox1*cos(or1) - oy1*sin(or1)
+    dock_end_y = ox1*sin(or1) + oy1*cos(or1)
 
+    h_dock1 = 2.0 + 10.0*(1.0 - tanh(0.5*(x_rot - dock_end_x + 4))) - (y_rot - dock_end_y)
+    h_dock2 = 2.0 + 10.0*(1.0 - tanh(0.5*(x_rot - dock_end_x + 4))) + (y_rot - dock_end_y)
+    h_dock1_dot = -x_rot_dot*10.0*0.5*(1-tanh(0.5*(x_rot - dock_end_x + 4))*tanh(0.5*(x_rot - dock_end_x + 4))) + y_rot_dot
+    h_dock2_dot = -x_rot_dot*10.0*0.5*(1-tanh(0.5*(x_rot - dock_end_x + 4))*tanh(0.5*(x_rot - dock_end_x + 4))) - y_rot_dot
+    
+    
     h_expr = SX.zeros(num_obs,1)
     h_expr[0] = 10*h_dock1 + h_dock1_dot 
     h_expr[1] = 10*h_dock2 + h_dock2_dot
-    h_expr[2] = -xh + ox1 + 5
+    h_expr[2] = 2.0#-x_rot + dock_end_x + 5
 
 
 
@@ -177,7 +190,7 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.cost.cost_type_e = 'NONLINEAR_LS'
 
     # Q_mat = 1*np.diag([0, 0, 0, 0, 0, 0, 1e-2, 1e-3])
-    Q_mat = 1*np.diag([1e0, 1e2, 1e1, 1e2, 1e2, 1e1, 0, 0])
+    Q_mat = 1*np.diag([1e0, 1e0, 1e0, 1e1, 1e1, 1e0, 0, 0])
     Q_mat_terminal = 40*np.diag([1e1, 1e1, 1e2, 1e3, 1e3, 1e3, 0, 0])
     R_mat = 1*np.diag([1e-1, 1e-1])
 

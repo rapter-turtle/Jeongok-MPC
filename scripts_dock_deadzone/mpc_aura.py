@@ -39,8 +39,8 @@ class AuraMPC(Node):
         self.dob_thrust = 0.0
         
         # MPC parameter settings
-        self.Tf = 15 # prediction time 4 sec
-        self.N = 30 # prediction horizon
+        self.Tf = 20 # prediction time 4 sec
+        self.N = 40 # prediction horizon
         self.con_dt = 0.5 # control sampling time
         self.ocp_solver = setup_trajectory_tracking(self.states, self.N, self.Tf)
 
@@ -150,14 +150,14 @@ class AuraMPC(Node):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
         print("prepare time : ",time.time() - self.start_time)
-        if time.time() - self.start_time > 10:                
+        if time.time() - self.start_time > 1:                
             t = time.time()
             ##### Reference States ######
             for j in range(self.N+1):
                 dock_x = 30.0
                 dock_y = -0.0
                 real_dock = dock_x
-                dock_psi = 0.0*3.141592/180
+                dock_psi = 30.0*3.141592/180
 
                 dock_psi = self.yaw_discontinuity(dock_psi)
                 yref = np.hstack((real_dock,dock_y,dock_psi,0,0,0,0,0,0,0))
@@ -167,10 +167,10 @@ class AuraMPC(Node):
             
             
             ##### Obstacle Position ######
-            obs_pos = np.array([dock_x, dock_y + 2, dock_psi,  # Obstacle-1: x, y, radius
+            obs_pos = np.array([dock_x, dock_y, -dock_psi,  # Obstacle-1: x, y, radius
                                 self.A, self.B, self.C, 
-                                # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
-                                self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]) # Obstacle-2: x, y, radius
+                                0.0,0.0,0.0]) # Obstacle-2: x, y, radius
+                                # self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]) # Obstacle-2: x, y, radius
             
             for j in range(self.N+1):
                 self.ocp_solver.set(j, "p", obs_pos)

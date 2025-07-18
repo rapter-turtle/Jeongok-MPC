@@ -8,7 +8,7 @@ import numpy as np
 
 def DOB(state, state_estim, param_filtered, param_estim, dt):
 
-
+ 
     M = 1.0  # Mass [kg]
     I = 1.0   # Inertial tensor [kg m^2]
 
@@ -57,9 +57,9 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
         a = 1
 
 
-    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + a*0.01*F*F*np.cos(bu*delta))/(M + Xu_dot),
-                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + a*0.01*F*F*np.sin(b2*delta)),
-                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - a*b3*0.01*F*F*np.sin(b2*delta))
+    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + 0.5*a*0.01*F*F*np.cos(bu*delta))/(M + Xu_dot),
+                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + 0.5*a*0.01*F*F*np.sin(b2*delta)),
+                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - 0.5*a*b3*0.01*F*F*np.sin(b2*delta))
                     ])
 
 
