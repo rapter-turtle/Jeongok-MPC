@@ -12,8 +12,12 @@ def export_heron_model_nlp2() -> AcadosModel:
     I = 1.0   # Inertial tensor [kg m^2]
  
     Xu_dot = 1.74
-    Xu = 1.671
-    Xuu = 0.481
+    # Xu = 1.671
+    # Xuu = 0.481
+    
+    Xu = 0.783
+    Xuu = 2.22
+
     Yv = 0.1074
     Yvv = 0.0
     Yr = 0.0
@@ -69,24 +73,18 @@ def export_heron_model_nlp2() -> AcadosModel:
     # Deadzone
     s = 25
     k = 8
-    a1 = 2.2*2.2
-    a2 = 2.2*2.2
+    a1 = 5.0
+    a2 = 5.0
+    # a1 = 2.2*2.2
+    # a2 = 2.2*2.2
     b11 = 1.0
     b22 = 1.0
 
     eps = 0.00001
     # dynamics
-    T = 0.5*((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
+    T = 1.0*((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
 
-    # f_expl = vertcat(u*cos(psi) - v*sin(psi),
-    #                  u*sin(psi) + v*cos(psi),
-    #                  r,
-    #                  ( - Xu*u - Xuu * sqrt(u * u + eps) * u + F*cos(bu*delta))/(M + Xu_dot),
-    #                  ( -Yv*v - Yr*r + F*sin(b2*delta) + F_bow*bow_button),
-    #                  ( - Nr*r - b3*F*sin(b2*delta) + F_l*F_bow*bow_button),
-    #                  delta_d,
-    #                  F_d
-    #                  )
+
     
 
     f_expl = vertcat(u*cos(psi) - v*sin(psi),
@@ -106,11 +104,6 @@ def export_heron_model_nlp2() -> AcadosModel:
     num_obs = 2
 
     #docking
-    # yh = yn + 4*sin(psi)
-    # yb = yn - 1*sin(psi)
-    # h_expr = SX.zeros(num_obs,1)
-    # h_expr[0] = -yh + y_dock + 1
-    # h_expr[1] = -yb + y_dock + 1
     xh = xn + 4*cos(psi)
     xb = xn - 1*cos(psi)
     yh = yn + 4*sin(psi)

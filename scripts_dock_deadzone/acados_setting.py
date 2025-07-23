@@ -11,9 +11,18 @@ def export_heron_model() -> AcadosModel:
     M = 1.0  # Mass [kg]
     I = 1.0   # Inertial tensor [kg m^2]
 
+    
+
+    # # Mid-speed
     Xu_dot = 1.74
-    Xu = 1.671
-    Xuu = 0.481
+    # Xu = 1.671
+    # Xuu = 0.481
+    
+    # Mid-speed
+    # Xu_dot = 0.0
+    Xu = 0.783
+    Xuu = 2.22
+    
     Yv = 0.1074
     Yvv = 0.0
     Yr = 0.0
@@ -60,18 +69,24 @@ def export_heron_model() -> AcadosModel:
     or2 = SX.sym('or2') 
 
 
-    du = SX.sym('du')
-    dv = SX.sym('dv')
+    # du = SX.sym('du')
+    # dv = SX.sym('dv')
     dr = SX.sym('dr') 
+
+    dx = SX.sym('dx')
+    dy = SX.sym('dy') 
     
-    # du = dx*cos(psi) + dy*sin(psi)
-    # dv = -dx*sin(psi) + dy*cos(psi)
+    du = dx*cos(psi) + dy*sin(psi)
+    dv = -dx*sin(psi) + dy*cos(psi)
 
 
+    # p = vertcat(ox1, oy1, or1, 
+    #             ox2, oy2, or2,
+    #             du, dv, dr)
     p = vertcat(ox1, oy1, or1, 
-                ox2, oy2, or2,
-                du, dv, dr)
-    
+            ox2, oy2, or2,
+            dx, dy, dr)
+
     
     states_dot = vertcat(xn_dot, yn_dot, psi_dot, u_dot, v_dot, r_dot, delta_dot, F_dot)
 
@@ -79,15 +94,18 @@ def export_heron_model() -> AcadosModel:
     # Deadzone
     s = 25
     k = 8
-    # s = 25
-    # k = 1
+    # s = 8
+    # k = 3
     a1 = 2.2*2.2
     a2 = 2.2*2.2
+    # a1 = 5.0
+    # a2 = 5.0
     b11 = 1.0
     b22 = 1.0
 
     # F = F_cmd 
-    T = 0.5*((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
+    T = ((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
+
 
     eps = 0.00001
     # dynamics
@@ -100,56 +118,63 @@ def export_heron_model() -> AcadosModel:
                      delta_d,
                      F_d
                      )
-
-    # f_expl = vertcat(u*cos(psi) - v*sin(psi),
-    #                  u*sin(psi) + v*cos(psi),
-    #                  r,
-    #                  ( - Xu*u - Xuu * sqrt(u * u + eps) * u + ((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))*cos(bu*delta))/(M + Xu_dot) - du,
-    #                  ( -Yv*v - Yr*r + ((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))*sin(b2*delta)) - dv,
-    #                  ( - Nr*r - b3*((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))*sin(b2*delta)) - dr,
-    #                  delta_d,
-    #                  F_d
-    #                  )
     
 
     f_impl = states_dot - f_expl
 
 
-    num_obs = 3
+    num_obs = 5
 
-    #docking
-    head_l = 4.0
+    #Head, back point
+    head_l = 5.0
     xh_dot = u*cos(psi) - v*sin(psi) - r*head_l*sin(psi)
     yh_dot = u*sin(psi) + v*cos(psi) + r*head_l*cos(psi)
     xh = xn + head_l*cos(psi)
     yh = yn + head_l*sin(psi)
     
+    back_l = -1.0
+    xb_dot = u*cos(psi) - v*sin(psi) - r*back_l*sin(psi)
+    yb_dot = u*sin(psi) + v*cos(psi) + r*back_l*cos(psi)
+    xb = xn + back_l*cos(psi)
+    yb = yn + back_l*sin(psi)
+
     # Rot
     x_rot = xh*cos(or1) - yh*sin(or1)
     y_rot = xh*sin(or1) + yh*cos(or1)
     x_rot_dot = xh_dot*cos(or1) - yh_dot*sin(or1)
     y_rot_dot = xh_dot*sin(or1) + yh_dot*cos(or1)
 
-    # 1-tanh2
-    # h_dock1 = 2.0 + 10.0*(1.0 - tanh(0.5*(xh - ox1 + 4))) - (yh - oy1)
-    # h_dock2 = 2.0 + 10.0*(1.0 - tanh(0.5*(xh - ox1 + 4))) + (yh - oy1)
-    # h_dock1_dot = -xh_dot*10.0*0.5*(1-tanh(0.5*(xh - ox1 + 4))*tanh(0.5*(xh - ox1 + 4))) + yh_dot
-    # h_dock2_dot = -xh_dot*10.0*0.5*(1-tanh(0.5*(xh - ox1 + 4))*tanh(0.5*(xh - ox1 + 4))) - yh_dot
-    
+    xb_rot = xb*cos(or1) - yb*sin(or1)
+    yb_rot = xb*sin(or1) + yb*cos(or1)
+    xb_rot_dot = xb_dot*cos(or1) - yb_dot*sin(or1)
+    yb_rot_dot = xb_dot*sin(or1) + yb_dot*cos(or1)
+
+    # Dock position
     dock_end_x = ox1*cos(or1) - oy1*sin(or1)
     dock_end_y = ox1*sin(or1) + oy1*cos(or1)
 
-    h_dock1 = 2.0 + 10.0*(1.0 - tanh(0.5*(x_rot - dock_end_x + 4))) - (y_rot - dock_end_y)
-    h_dock2 = 2.0 + 10.0*(1.0 - tanh(0.5*(x_rot - dock_end_x + 4))) + (y_rot - dock_end_y)
-    h_dock1_dot = -x_rot_dot*10.0*0.5*(1-tanh(0.5*(x_rot - dock_end_x + 4))*tanh(0.5*(x_rot - dock_end_x + 4))) + y_rot_dot
-    h_dock2_dot = -x_rot_dot*10.0*0.5*(1-tanh(0.5*(x_rot - dock_end_x + 4))*tanh(0.5*(x_rot - dock_end_x + 4))) - y_rot_dot
-    
-    
-    h_expr = SX.zeros(num_obs,1)
-    h_expr[0] = 10*h_dock1 + h_dock1_dot 
-    h_expr[1] = 10*h_dock2 + h_dock2_dot
-    h_expr[2] = 2.0#-x_rot + dock_end_x + 5
+    # Dock CBF
+    front_space = 10.0
 
+    grad = 0.2
+    h_dock1 = 2.0 + 10.0*(1.0 - tanh(grad*(x_rot - dock_end_x + front_space))) - (y_rot - dock_end_y)
+    h_dock2 = 2.0 + 10.0*(1.0 - tanh(grad*(x_rot - dock_end_x + front_space))) + (y_rot - dock_end_y)
+    h_dock1_dot = -x_rot_dot*10.0*grad*(1-tanh(grad*(x_rot - dock_end_x + front_space))*tanh(grad*(x_rot - dock_end_x + front_space))) + y_rot_dot
+    h_dock2_dot = -x_rot_dot*10.0*grad*(1-tanh(grad*(x_rot - dock_end_x + front_space))*tanh(grad*(x_rot - dock_end_x + front_space))) - y_rot_dot
+    
+    b_dock1 = 2.0 + 10.0*(1.0 - tanh(grad*(xb_rot - dock_end_x + front_space))) - (yb_rot - dock_end_y)
+    b_dock2 = 2.0 + 10.0*(1.0 - tanh(grad*(xb_rot - dock_end_x + front_space))) + (yb_rot - dock_end_y)
+    b_dock1_dot = -xb_rot_dot*10.0*grad*(1-tanh(grad*(xb_rot - dock_end_x + front_space))*tanh(grad*(xb_rot - dock_end_x + front_space))) + yb_rot_dot
+    b_dock2_dot = -xb_rot_dot*10.0*grad*(1-tanh(grad*(xb_rot - dock_end_x + front_space))*tanh(grad*(xb_rot - dock_end_x + front_space))) - yb_rot_dot
+    
+
+    alpha = 10.0
+    h_expr = SX.zeros(num_obs,1)
+    h_expr[0] = alpha*h_dock1 + h_dock1_dot 
+    h_expr[1] = alpha*h_dock2 + h_dock2_dot
+    h_expr[2] = alpha*b_dock1 + b_dock1_dot
+    h_expr[3] = alpha*b_dock2 + b_dock2_dot
+    h_expr[4] = 5.0*(-xb_rot + dock_end_x + 2) - xb_rot_dot
 
 
     model = AcadosModel()
@@ -189,12 +214,13 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.cost.cost_type = 'NONLINEAR_LS'
     ocp.cost.cost_type_e = 'NONLINEAR_LS'
 
-    # Q_mat = 1*np.diag([0, 0, 0, 0, 0, 0, 1e-2, 1e-3])
-    Q_mat = 1*np.diag([1e0, 1e0, 1e3, 1e1, 1e1, 1e0, 0, 0])
-    Q_mat_terminal = 40*np.diag([1e1, 1e1, 1e2, 1e3, 1e3, 1e3, 0, 0])
-    # Q_mat_terminal = 40*np.diag([1e0, 1e0, 1e2, 1e3, 1e3, 1e3, 0, 0])
-    
-    R_mat = 1*np.diag([1e-1, 1e-1])
+    Q_mat = 1*np.diag([1e1, 1e1, 1e4, 1e-1, 1e-1, 1e-1, 0, 0])
+    Q_mat_terminal = 40*np.diag([1e2, 1e2, 1e3, 1e0, 1e0, 1e1, 0, 0]) 
+    R_mat = 1*np.diag([1e0, 1e1])
+
+    # Q_mat = 1*np.diag([1e1, 1e1, 1e4, 1e2, 1e2, 1e-1, 0, 0])
+    # Q_mat_terminal = 40*np.diag([1e2, 1e2, 1e3, 1e4, 1e4, 1e1, 0, 0]) 
+    # R_mat = 1*np.diag([1e0, 1e1])
 
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
     ocp.cost.W_e = Q_mat_terminal
@@ -211,13 +237,13 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
                                      0.0, 0.0, 0.0,
                                      0.0, 0.0, 0.0])
 
-    num_obs = 3
+    num_obs = 5
     ocp.constraints.uh = 1e10 * np.ones(num_obs)
     ocp.constraints.lh = np.zeros(num_obs)
 
 
-    ocp.constraints.idxsh = np.array([0,1,2])
-    ocp.constraints.idxsh_e = np.array([0,1,2])
+    ocp.constraints.idxsh = np.array([0,1,2,3,4])
+    ocp.constraints.idxsh_e = np.array([0,1,2,3,4])
     Zh = 1e5 * np.ones(num_obs)
     zh = 1e5 * np.ones(num_obs)
     ocp.cost.zl = zh
@@ -235,8 +261,8 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.model.con_h_expr_e = ocp.model.con_h_expr
 
     # set constraints
-    ocp.constraints.lbu = np.array([-100,-4.0])
-    ocp.constraints.ubu = np.array([+100,+4.0])
+    ocp.constraints.lbu = np.array([-70,-4.0])
+    ocp.constraints.ubu = np.array([+70,+4.0])
     ocp.constraints.idxbu = np.array([0, 1])
 
     ocp.constraints.lbx = np.array([-250, -9.0])

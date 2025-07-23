@@ -12,9 +12,17 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
     M = 1.0  # Mass [kg]
     I = 1.0   # Inertial tensor [kg m^2]
 
+    
+    # Mid-speed
     Xu_dot = 1.74
-    Xu = 1.671
-    Xuu = 0.481
+    # Xu = 1.671
+    # Xuu = 0.481
+
+    # Slow-speed
+    # Xu_dot = 0.0
+    Xu = 0.783
+    Xuu = 2.22
+
     Yv = 0.1074
     Yvv = 0.0
     Yr = 0.0
@@ -24,17 +32,6 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
     bu=  1.74/500.0
     b2 = 0.045/500.0
     b3 = 0.574
-
-    # f_expl = vertcat(u*cos(psi) - v*sin(psi),
-    #                  u*sin(psi) + v*cos(psi),
-    #                  r,
-    #                  ( - Xu*u + 0.01*F*F*cos(bu*delta))/(M + Xu_dot),
-    #                  ( -Yv*v - Yr*r + 0.01*F*F*sin(b2*delta)),
-    #                  ( - Nr*r - b3*0.01*F*F*sin(b2*delta)),
-    #                  delta_d,
-    #                  F_d
-    #                  )
-
 
     w_cutoff = 0.5
     gain = -1.0
@@ -50,6 +47,7 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
 
     # Deadzone
     # F = F_cmd 
+    aa = 1.0
     a = 0
     if F < 0:
         a = -1
@@ -57,9 +55,9 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
         a = 1
 
 
-    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + 0.5*a*0.01*F*F*np.cos(bu*delta))/(M + Xu_dot),
-                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + 0.5*a*0.01*F*F*np.sin(b2*delta)),
-                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - 0.5*a*b3*0.01*F*F*np.sin(b2*delta))
+    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + aa*a*0.01*F*F*np.cos(bu*delta))/(M + Xu_dot),
+                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + aa*a*0.01*F*F*np.sin(b2*delta)),
+                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - aa*a*b3*0.01*F*F*np.sin(b2*delta))
                     ])
 
 

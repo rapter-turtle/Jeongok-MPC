@@ -12,8 +12,15 @@ def export_heron_model_nlp1() -> AcadosModel:
     I = 1.0   # Inertial tensor [kg m^2]
  
     Xu_dot = 1.74
-    Xu = 1.671
-    Xuu = 0.481
+    
+    # Mid speed
+    # Xu = 1.671
+    # Xuu = 0.481
+
+    # Slow speed
+    Xu = 0.783
+    Xuu = 2.22
+
     Yv = 0.1074
     Yvv = 0.0
     Yr = 0.0
@@ -70,24 +77,17 @@ def export_heron_model_nlp1() -> AcadosModel:
     # Deadzone
     s = 25
     k = 8
-    a1 = 2.2*2.2
-    a2 = 2.2*2.2
+    a1 = 5.0
+    a2 = 5.0
+    # a1 = 2.2*2.2
+    # a2 = 2.2*2.2
     b11 = 1.0
     b22 = 1.0
 
     eps = 0.00001
     # dynamics
-    T = 0.5*((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
+    T = ((1/(1+exp(s*F)))*(b11*F + tanh(k*F)*a1) + (1/(1+exp(-s*F)))*(b22*F + tanh(k*F)*a2))
 
-    # f_expl = vertcat(u*cos(psi) - v*sin(psi),
-    #                  u*sin(psi) + v*cos(psi),
-    #                  r,
-    #                  ( - Xu*u - Xuu * sqrt(u * u + eps) * u + F*cos(bu*delta))/(M + Xu_dot),
-    #                  ( -Yv*v - Yr*r + F*sin(b2*delta) + F_bow*B),
-    #                  ( - Nr*r - b3*F*sin(b2*delta) + F_l*F_bow*B),
-    #                  delta_d,
-    #                  F_d
-    #                  )
     
     f_expl = vertcat(u*cos(psi) - v*sin(psi),
                      u*sin(psi) + v*cos(psi),
@@ -160,21 +160,6 @@ def setup_trajectory_tracking_nlp1(x0, N_horizon, Tf, Q_mat, Q_mat_terminal, R_m
     # set cost module
     ocp.cost.cost_type = 'NONLINEAR_LS'
     ocp.cost.cost_type_e = 'NONLINEAR_LS'
-
-    # Q_mat = 1*np.diag([0, 0, 0, 0, 0, 0, 1e-2, 1e-3])
-    # Q_mat = 1*np.diag([1e0, 1e1, 1e3, 1e1, 1e1, 1e-2, 0, 0])
-    # Q_mat_terminal = 40*np.diag([1e0, 1e0, 1e2, 1e3, 1e3, 1e3, 0, 0])
-    # R_mat = 1*np.diag([1e0, 1e-2, 1e2])
-
-
-    # ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
-    # ocp.cost.W_e = Q_mat_terminal
-
-    # x_e = model.x - [0.0, 0, 0, 0, 0, 0, 0, 0]
-
-    # ocp.model.cost_expr_ext_cost = x_e.T @ Q_mat @ x_e + model.u.T @ R_mat @ model.u
-    # ocp.model.cost_expr_ext_cost_e = x_e.T @ Q_mat_terminal @ x_e
-
 
 
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)

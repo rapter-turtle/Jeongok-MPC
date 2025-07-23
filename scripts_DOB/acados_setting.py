@@ -73,8 +73,6 @@ def export_heron_model() -> AcadosModel:
 
     s = 25
     k = 8
-    # s = 25
-    # k = 1
     a1 = 2.2*2.2
     a2 = 2.2*2.2
     b11 = 1.0
@@ -84,7 +82,6 @@ def export_heron_model() -> AcadosModel:
 
 
     eps = 0.00001
-    # dynamics
     f_expl = vertcat(u*cos(psi) - v*sin(psi),
                      u*sin(psi) + v*cos(psi),
                      r,
@@ -112,8 +109,8 @@ def export_heron_model() -> AcadosModel:
     h_expr = SX.zeros(num_obs,1)
     # h_expr[0] = h1
     # h_expr[1] = h2
-    h_expr[0] = h1*alpha + h1_dot
-    h_expr[1] = h2*alpha + h2_dot
+    h_expr[0] = h1*alpha #+ h1_dot
+    h_expr[1] = h2*alpha #+ h2_dot
     
 
 
@@ -154,12 +151,11 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.cost.cost_type = 'NONLINEAR_LS'
     ocp.cost.cost_type_e = 'NONLINEAR_LS'
 
-    Q_mat = 2*np.diag([1e1, 1e1, 1e-2, 0.0, 0.0, 0.0, 1e-2, 1e-3])
-    R_mat = 2*np.diag([1e0, 1e-1])
-    Q_mat_term = 2*np.diag([1e1, 1e1, 1e-2, 0.0, 0.0, 0.0, 1e-2, 1e-3])
+    Q_mat = 2*np.diag([1e2, 1e2, 1e-2, 0.0, 0.0, 0.0, 1e-1, 1e-3])
+    R_mat = 2*np.diag([1e1, 1e-1])
 
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
-    ocp.cost.W_e = Q_mat_term
+    ocp.cost.W_e = Q_mat
 
     ocp.model.cost_y_expr = vertcat(model.x, model.u)
     ocp.model.cost_y_expr_e = model.x
@@ -176,10 +172,7 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     num_obs = 2
     ocp.constraints.uh = 1e10 * np.ones(num_obs)
     ocp.constraints.lh = np.zeros(num_obs)
-    # h_expr = SX.zeros(num_obs,1)
-    # h_expr[0] = (model.x[0]-ox1) ** 2 + (model.x[1] - oy1) ** 2 - or1**2
-    # h_expr[1] = (model.x[0]-ox2) ** 2 + (model.x[1] - oy2) ** 2 - or2**2
-    # ocp.model.con_h_expr = h_expr
+
 
     ocp.constraints.idxsh = np.array([0,1])
     ocp.constraints.idxsh_e = np.array([0,1])
@@ -200,8 +193,8 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.model.con_h_expr_e = ocp.model.con_h_expr
 
     # set constraints
-    ocp.constraints.lbu = np.array([-50,-4.0])
-    ocp.constraints.ubu = np.array([+50,+4.0])
+    ocp.constraints.lbu = np.array([-50,-5.0])
+    ocp.constraints.ubu = np.array([+50,+5.0])
     ocp.constraints.idxbu = np.array([0, 1])
 
     ocp.constraints.lbx = np.array([-250, -16.0])

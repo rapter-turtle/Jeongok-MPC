@@ -25,17 +25,6 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
     b2 = 0.045/500.0
     b3 = 0.574
 
-    # f_expl = vertcat(u*cos(psi) - v*sin(psi),
-    #                  u*sin(psi) + v*cos(psi),
-    #                  r,
-    #                  ( - Xu*u + 0.01*F*F*cos(bu*delta))/(M + Xu_dot),
-    #                  ( -Yv*v - Yr*r + 0.01*F*F*sin(b2*delta)),
-    #                  ( - Nr*r - b3*0.01*F*F*sin(b2*delta)),
-    #                  delta_d,
-    #                  F_d
-    #                  )
-
-
     w_cutoff = 0.5
     gain = -1.0
 

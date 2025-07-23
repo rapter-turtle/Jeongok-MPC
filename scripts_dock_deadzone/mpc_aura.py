@@ -8,7 +8,7 @@ import math
 import time
 import numpy as np
 from DOB import*
-
+ 
 ship_state_x = (289577.66 + 291591.05)*0.5  # UTM X (easting)
 ship_state_y = (4117065.30 + 4118523.52)*0.5  
 
@@ -39,8 +39,8 @@ class AuraMPC(Node):
         self.dob_thrust = 0.0
         
         # MPC parameter settings
-        self.Tf = 20 # prediction time 4 sec
-        self.N = 40 # prediction horizon
+        self.Tf = 15 # prediction time 4 sec
+        self.N = 30 # prediction horizon
         self.con_dt = 0.5 # control sampling time
         self.ocp_solver = setup_trajectory_tracking(self.states, self.N, self.Tf)
 
@@ -53,6 +53,7 @@ class AuraMPC(Node):
         self.start_time = time.time()
 
         self.stop_switch = 0.0
+        self.before_thrust = 0.0
 
         # reference trajectory generation
         self.A = 3.0
@@ -83,19 +84,13 @@ class AuraMPC(Node):
             # Steer below -300 maps directly to PWM 1000
             return 1000.0
 
-
-    def convert_thrust_to_pwm(self, rpm_thrust, thr):
+ 
+    def convert_thrust_to_pwm(self, rpm_thrust, thr, before):
         """Convert thrust level to PWM signal"""
-        # thr_new = np.sign(rpm_thrust - thr)*100*0.5 + thr
-
-        # if (rpm_thrust-thr)*(rpm_thrust-thr_new)<0:
-        #     thr_new = rpm_thrust
+        
         thr_new = rpm_thrust
-        # print(rpm_thrust)
-        # deadzone = 22.0*22.0
         deadzone = 22.0*22.0
         threshold = 100.0
-        # deadzone = 10.0*10.0
         if thr_new < threshold and thr_new > -threshold:
             thrust_2 = 0.0 
         else:        
@@ -108,21 +103,23 @@ class AuraMPC(Node):
             thrust = np.sqrt(thrust_2)
         else:
             thrust = 0.0
-
-        # print("thrust : ",thrust)
         
         dob_thrust = thrust
 
-        if thrust < 0.0:
+        if thrust < -0.1:
             pwm = 3.9 * thrust + 1450.0
             return self.clamp(pwm, 1000.0, 1450.0), thr, dob_thrust  # Any value <= 0 thrust maps to PWM 1000
-        else:
+        elif thrust > 0.1:
             # Calculate PWM based on the thrust
             pwm = 3.9 * thrust + 1550.0
-            # You can switch the formula if needed, using the commented one
-            # pwm = 5.0 * thrust + 1500
             return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
-    
+        else:
+            if before >= 0:
+                pwm = 1550.0
+                return pwm, thr, dob_thrust
+            else:
+                pwm = 1450.0
+                return pwm, thr, dob_thrust
 
     def ekf_callback(self, msg):# - frequency = gps callback freq. 
         """Callback to update states from EKF estimated state."""
@@ -150,15 +147,15 @@ class AuraMPC(Node):
     def run(self):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
-        print("prepare time : ",time.time() - self.start_time)
-        if time.time() - self.start_time > 10:                
+        
+        if time.time() - self.start_time > 5.0:                
             t = time.time()
             ##### Reference States ######
             for j in range(self.N+1):
                 dock_x = 30.0
-                dock_y = -0.0
+                dock_y = -5.0
                 real_dock = dock_x
-                dock_psi = 10.0*3.141592/180
+                dock_psi = 0.0*3.141592/180
 
                 dock_psi = self.yaw_discontinuity(dock_psi)
                 yref = np.hstack((real_dock,dock_y,dock_psi,0,0,0,0,0,0,0))
@@ -166,13 +163,15 @@ class AuraMPC(Node):
                     yref = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0))
                 self.ocp_solver.cost_set(j, "yref", yref)
             
-            
+            dx = self.param_filtered[0]*np.cos(self.p) - self.param_filtered[1]*np.sin(self.p)
+            dy = self.param_filtered[0]*np.sin(self.p) + self.param_filtered[1]*np.cos(self.p)            
             ##### Obstacle Position ######
             obs_pos = np.array([dock_x, dock_y, -dock_psi,  # Obstacle-1: x, y, radius
                                 self.A, self.B, self.C, 
-                                0.0,0.0,0.0]) # Obstacle-2: x, y, radius
+                                # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
+                                dx, dy, self.param_filtered[2]]) # Obstacle-2: x, y, radius
                                 # self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]) # Obstacle-2: x, y, radius
-            
+
             for j in range(self.N+1):
                 self.ocp_solver.set(j, "p", obs_pos)
         
@@ -200,23 +199,26 @@ class AuraMPC(Node):
             self.delta += del_con[0]*self.con_dt
             self.F += del_con[1]*self.con_dt
 
-            self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
-            if np.sqrt((self.states[0]-dock_x)**2 + (self.states[1]-dock_y)**2)<2.0 and np.sqrt((self.states[3])**2 + (self.states[4])**2) < 1.0:
+            if np.sqrt((self.states[0]-dock_x)**2 + (self.states[1]-dock_y)**2)<=2.0 and np.sqrt((self.states[3])**2 + (self.states[4])**2) < 2.0:
                 self.stop_switch = 1.0
-
+                
             if self.stop_switch == 1.0:
                 self.F = 0.0
+                print("end")
+            else:
+                self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
+
+
 
             self.delta_pwm = self.convert_steering_to_pwm(self.delta)
-            self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
+            self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr, self.before_thrust)                        
             actuator_msg = Float64MultiArray()
             actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
-            # print("thrust d : ",del_con[1], "F : ", self.F*100.0)
-            # print("steer : ",self.delta, "thrust : ",self.F*100.0)
+
             
             self.publisher_.publish(actuator_msg)                                
-            
+            self.before_thrust = self.F
             
             # Publish predicted states and reference states
             mpc_data_stack = MPCTraj()
@@ -269,7 +271,11 @@ class AuraMPC(Node):
             mpc_data_stack.obs.append(obs_state)        
 
             self.mpcvis_pub.publish(mpc_data_stack)
-        
+
+
+
+        else:
+            print("prepare time : ",time.time() - self.start_time)
 
 
     def run_DOB(self):
@@ -279,6 +285,7 @@ class AuraMPC(Node):
              
         DOB_msg = Float64MultiArray()
         DOB_msg.data = [self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]
+        
         self.DOB_pub.publish(DOB_msg)                     
         
 

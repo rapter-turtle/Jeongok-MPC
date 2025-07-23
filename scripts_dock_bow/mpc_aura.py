@@ -42,13 +42,13 @@ class AuraMPC(Node):
         self.stop_switch = 0.0
         
         # MPC parameter settings
-        self.Tf = 20 # prediction time 4 sec
-        self.N = 40 # prediction horizon
+        self.Tf = 15 # prediction time 4 sec
+        self.N = 30 # prediction horizon
         self.con_dt = 0.5 # control sampling time
 
-        Q_mat = 1*np.diag([1e0, 1e0, 1e3, 1e2, 1e2, 1e-2, 0, 0])
-        Q_mat_terminal = 20*np.diag([1e1, 1e1, 1e3, 1e3, 1e3, 1e3, 0, 0])
-        R_mat1 = 1*np.diag([1e-1, 1e-1, 1e1])
+        Q_mat = 1*np.diag([1e0, 1e0, 1e3, 1e1, 1e1, 1e-2, 0, 0])
+        Q_mat_terminal = 20*np.diag([1e2, 1e2, 1e3, 1e2, 1e2, 1e3, 0, 0])
+        R_mat1 = 1*np.diag([1e-1, 1e-1, 5e1])
         R_mat2 = 1*np.diag([1e-1, 1e-1])        
         self.ocp_solver_nlp1 = setup_trajectory_tracking_nlp1(self.states, self.N, self.Tf, Q_mat, Q_mat_terminal, R_mat1)
         self.ocp_solver_nlp2 = setup_trajectory_tracking_nlp2(self.states, self.N, self.Tf, Q_mat, Q_mat_terminal, R_mat2)
@@ -61,6 +61,8 @@ class AuraMPC(Node):
         self.DOB_dt = 0.1
 
         self.a_dot_state = 0.0
+
+        self.before_thrust = 0.0
 
         #CIA
         self.count_on_left = 0
@@ -98,36 +100,7 @@ class AuraMPC(Node):
             # Steer below -300 maps directly to PWM 1000
             return 1000.0
 
-    # def convert_thrust_to_pwm(self, rpm_thrust, thr):
-    #     """Convert thrust level to PWM signal"""
-    #     # thr_new = np.sign(rpm_thrust - thr)*100*0.5 + thr
-
-    #     # if (rpm_thrust-thr)*(rpm_thrust-thr_new)<0:
-    #     #     thr_new = rpm_thrust
-    #     thr_new = rpm_thrust
-        
-
-    #     if rpm_thrust <= 0.0 :
-    #         thrust = -np.sqrt(-(rpm_thrust))
-    #     elif rpm_thrust >= 0.0:
-    #         thrust = np.sqrt(rpm_thrust)
-    #     else:
-    #         thrust = 0.0
-
-    #     dob_thrust = thrust
-
-    #     if thrust < 0.0:
-    #         pwm = 3.9 * thrust + 1450.0
-    #         return self.clamp(pwm, 1000.0, 1450.0), thr, dob_thrust  # Any value <= 0 thrust maps to PWM 1000
-    #     else:
-    #         # Calculate PWM based on the thrust
-    #         pwm = 3.9 * thrust + 1550.0
-    #         # You can switch the formula if needed, using the commented one
-    #         # pwm = 5.0 * thrust + 1500
-    #         return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
-    
-
-    def convert_thrust_to_pwm(self, rpm_thrust, thr):
+    def convert_thrust_to_pwm(self, rpm_thrust, thr, before):
         """Convert thrust level to PWM signal"""
         # thr_new = np.sign(rpm_thrust - thr)*100*0.5 + thr
 
@@ -137,7 +110,7 @@ class AuraMPC(Node):
         # print(rpm_thrust)
         # deadzone = 22.0*22.0
         deadzone = 22.0*22.0
-        threshold = 100.0
+        threshold = 50.0
         # deadzone = 10.0*10.0
         if thr_new < threshold and thr_new > -threshold:
             thrust_2 = 0.0 
@@ -156,16 +129,21 @@ class AuraMPC(Node):
         
         dob_thrust = thrust
 
-        if thrust < 0.0:
+
+        if thrust < -0.1:
             pwm = 3.9 * thrust + 1450.0
             return self.clamp(pwm, 1000.0, 1450.0), thr, dob_thrust  # Any value <= 0 thrust maps to PWM 1000
-        else:
-            # Calculate PWM based on the thrust
+        elif thrust > 0.1:
             pwm = 3.9 * thrust + 1550.0
-            # You can switch the formula if needed, using the commented one
-            # pwm = 5.0 * thrust + 1500
             return self.clamp(pwm, 1550.0, 2000.0), thr, dob_thrust  # Ensure PWM is within the bounds
-    
+        else:
+            if before >= 0:
+                pwm = 1550.0
+                return pwm, thr, dob_thrust
+            else:
+                pwm = 1450.0
+                return pwm, thr, dob_thrust
+
     def ekf_callback(self, msg):# - frequency = gps callback freq. 
         """Callback to update states from EKF estimated state."""
         self.x, self.y, self.p, self.u, self.v, self.r = msg.data[:6]
@@ -197,7 +175,7 @@ class AuraMPC(Node):
         for j in range(self.N+1):
             dock_x = 0.0
             dock_y = 0.0
-            dock_psi = -10.0*3.141592/180
+            dock_psi = 00.0*3.141592/180
 
             dock_psi = self.yaw_discontinuity(dock_psi)
             yref1 = np.hstack((dock_x,dock_y,dock_psi,0,0,0,0,0,0,0,0))
@@ -247,10 +225,6 @@ class AuraMPC(Node):
         stop_dwell_time = 2.0
         CIA_time = 1.0
         
-        ### Preprocess
-        # bow_array = np.zeros(int(self.N/2))
-        # for i in range(int(self.N/2)):
-        #     bow_array[i] = 0.5*(bow_array_0[2*i] + bow_array_0[2*i+1])
 
         ### CIA process
         dwell_len = int(dwell_time / self.con_dt)
@@ -347,13 +321,15 @@ class AuraMPC(Node):
             print("end")
 
         self.delta_pwm = self.convert_steering_to_pwm(self.delta)
-        self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
+        self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr, self.before_thrust)                        
         actuator_msg = Float64MultiArray()
         actuator_msg.data = [self.delta_pwm, self.F_pwm, self.bow_switch, 0.0]
         # print("thrust d : ",del_con[1], "F : ", self.F*100.0)
 
 
-        self.publisher_.publish(actuator_msg)                                
+        self.publisher_.publish(actuator_msg)    
+
+        self.before_thrust = self.F                            
         
         print("Time : ",time.time()-t)
 
@@ -417,7 +393,8 @@ class AuraMPC(Node):
         self.state_estim, self.param_estim, self.param_filtered = DOB(self.states, self.state_estim, self.param_filtered, self.param_estim, self.DOB_dt)
              
         DOB_msg = Float64MultiArray()
-        DOB_msg.data = [self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]
+        DOB_msg.data = [0.01*self.bow_switch, self.param_filtered[1], self.param_filtered[2]]
+        # DOB_msg.data = [self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]
         self.DOB_pub.publish(DOB_msg)                     
         
 

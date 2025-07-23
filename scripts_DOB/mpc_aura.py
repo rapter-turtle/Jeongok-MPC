@@ -36,8 +36,8 @@ class AuraMPC(Node):
         self.thr = 0.0
         
         # MPC parameter settings
-        self.Tf = 15 # prediction time 4 sec
-        self.N = 30 # prediction horizon
+        self.Tf = 20 # prediction time 4 sec
+        self.N = 40 # prediction horizon
         self.con_dt = 0.5 # control sampling time
         self.ocp_solver = setup_trajectory_tracking(self.states, self.N, self.Tf)
 
@@ -53,7 +53,7 @@ class AuraMPC(Node):
         # reference trajectory generation
         self.A = 150.0
         self.B = 100.0
-        self.C = 30.0
+        self.C = 35.0
         self.theta = np.pi/2
         self.plot_traj_xy = (ship_state_x+10, ship_state_y+30)
         
