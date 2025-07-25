@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D  # Import mplot3d for 3D plotting
 
 # Step 1: Load the data from CSV
-data = np.loadtxt("/home/user/BEACLS/beacls/sources/samples/plane4D3_cradle/all_loop.csv", delimiter=",")  # Ensure the correct delimiter is used
+data = np.loadtxt("/home/kiyong/BEACLS/beacls/sources/samples/plane4D3_cradle/all_loop.csv", delimiter=",")  # Ensure the correct delimiter is used
 
 # Grid parameters
 Nx = 11  # Number of points in x-direction
@@ -22,14 +22,14 @@ data_3d = data.reshape((Nx, Nx, Nx, Nx, Nx, Nx)).transpose(5, 4, 3, 2, 1, 0)
 # maxs = [3, 5, np.pi]
 
 mins = [-5, -5, -2.5]
-maxs = [3, 5, 2.5]
+maxs = [2, 5, 2.5]
 
 # beacls::FloatVec mins{ (FLOAT_TYPE)-5, (FLOAT_TYPE)-5, (FLOAT_TYPE)-2.5, (FLOAT_TYPE)-2.5, (FLOAT_TYPE)-M_PI, (FLOAT_TYPE)-2};
 # beacls::FloatVec maxs{ (FLOAT_TYPE)+3,(FLOAT_TYPE)+5,(FLOAT_TYPE)+2.5,(FLOAT_TYPE)+2.5, (FLOAT_TYPE)M_PI, (FLOAT_TYPE)+2 };
 
 
 # Generate the physical coordinates for each dimension
-x_vals = np.linspace(-5, 3, Nx)
+x_vals = np.linspace(-5, 2, Nx)
 y_vals = np.linspace(-5, 5, Nx)
 u_vals = np.linspace(-2.5, 2.5, Nx)
 v_vals = np.linspace(-2.5, 2.5, Nx)
@@ -47,16 +47,17 @@ psi_coords = psi_vals[neg_indices[:, 4]]
 r_coords = r_vals[neg_indices[:, 5]]
 
 # Create mask for -1 < u < 1
-mask = (u_coords > -1) & (u_coords < 1) & (v_coords > -1) & (v_coords < 1) & (psi_coords > -0.5*np.pi) & (psi_coords < 0.5*np.pi) & (r_coords > -0.2) & (r_coords < 0.2)
+mask = (u_coords > -2) & (u_coords < 2) & (v_coords > -1) & (v_coords < 1) & (psi_coords > -0.3*np.pi) & (psi_coords < 0.3*np.pi) & (r_coords > -0.5) & (r_coords < 0.5)
 
 # Apply mask to filter valid indices
-filtered_indices = neg_indices[mask]
+# filtered_indices = neg_indices[mask]
+filtered_indices = neg_indices
 
 # Map filtered indices to physical coordinates
 x_coords = x_vals[filtered_indices[:, 0]]
 y_coords = y_vals[filtered_indices[:, 1]]
-z_coords = psi_vals[filtered_indices[:, 4]]  # Using PSI for z-axis
-
+# z_coords = psi_vals[filtered_indices[:, 4]]  # psi
+z_coords = psi_vals[filtered_indices[:, 4]]  # u
 
 # Step 4: Visualize the negative value points (3D scatter plot)
 fig = plt.figure(figsize=(10, 7))
@@ -71,21 +72,11 @@ ax.set_ylabel('Y')
 ax.set_zlabel('PSI')  # Corrected to set z-axis label to 'PSI' for the Z-coordinate
 ax.set_title('Points with Negative Values in all_loop.csv')
 
-# Compute ranges
-x_range = x_vals.max() - x_vals.min()
-y_range = y_vals.max() - y_vals.min()
-z_range = psi_vals.max() - psi_vals.min()
-xyz_max_range = max(x_range, y_range, z_range)
-
-# Compute midpoints
-x_mid = (x_vals.max() + x_vals.min()) / 2
-y_mid = (y_vals.max() + y_vals.min()) / 2
-z_mid = (psi_vals.max() + psi_vals.min()) / 2
-
+# Compute range
 # Set equal limits for X, Y, and Z axes
 # ax.set_xlim(x_mid - xyz_max_range / 2, x_mid + xyz_max_range / 2)
 # ax.set_ylim(y_mid - xyz_max_range / 2, y_mid + xyz_max_range / 2)
-ax.set_xlim(-5, -2)
+ax.set_xlim(-5, 2.0)
 ax.set_ylim(-5, 5)
 ax.set_zlim(-4.0, 4.0)
 

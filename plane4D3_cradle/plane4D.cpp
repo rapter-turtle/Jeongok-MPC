@@ -88,21 +88,21 @@ int main(int argc, char *argv[])
 
 	// x, y, u, v, psi, r
 	
-	beacls::FloatVec mins{ (FLOAT_TYPE)-5, (FLOAT_TYPE)-5, (FLOAT_TYPE)-5, (FLOAT_TYPE)-5, (FLOAT_TYPE)-M_PI, (FLOAT_TYPE)-2};
-	beacls::FloatVec maxs{ (FLOAT_TYPE)+3,(FLOAT_TYPE)+5,(FLOAT_TYPE)+5,(FLOAT_TYPE)+5, (FLOAT_TYPE)M_PI, (FLOAT_TYPE)+2 };
+	beacls::FloatVec mins{ (FLOAT_TYPE)-5, (FLOAT_TYPE)-5, (FLOAT_TYPE)-3.0, (FLOAT_TYPE)-2.0, (FLOAT_TYPE)-M_PI, (FLOAT_TYPE)-1};
+	beacls::FloatVec maxs{ (FLOAT_TYPE)+2,(FLOAT_TYPE)+5,(FLOAT_TYPE)+3.0,(FLOAT_TYPE)+2.0, (FLOAT_TYPE)M_PI, (FLOAT_TYPE)+1 };
 
 	// beacls::FloatVec center{ (FLOAT_TYPE)0, (FLOAT_TYPE)0,  (FLOAT_TYPE)M_PI, (FLOAT_TYPE)9 };
 	// beacls::FloatVec widths{ (FLOAT_TYPE)2, (FLOAT_TYPE)2,  (FLOAT_TYPE)M_PI/2, (FLOAT_TYPE)1 };
-	beacls::FloatVec left{ (FLOAT_TYPE)-1, (FLOAT_TYPE)-1,  (FLOAT_TYPE)-1, (FLOAT_TYPE)-1, (FLOAT_TYPE)-0.25*M_PI, (FLOAT_TYPE)-1 };
-	beacls::FloatVec right{ (FLOAT_TYPE)1, (FLOAT_TYPE)1,  (FLOAT_TYPE)1, (FLOAT_TYPE)1, (FLOAT_TYPE)0.25*M_PI, (FLOAT_TYPE)+1};
+	beacls::FloatVec left{ (FLOAT_TYPE)-1, (FLOAT_TYPE)-1,  (FLOAT_TYPE)-0.5, (FLOAT_TYPE)-0.5, (FLOAT_TYPE)-0.25*M_PI, (FLOAT_TYPE)-0.1*M_PI };
+	beacls::FloatVec right{ (FLOAT_TYPE)1, (FLOAT_TYPE)1,  (FLOAT_TYPE)0.5, (FLOAT_TYPE)0.5, (FLOAT_TYPE)0.25*M_PI, (FLOAT_TYPE)+0.1*M_PI};
 
-	beacls::FloatVec mask_left1{ (FLOAT_TYPE)-2, (FLOAT_TYPE)-2,  (FLOAT_TYPE)-50, (FLOAT_TYPE)-50 , (FLOAT_TYPE)-0.3*M_PI, (FLOAT_TYPE)-5};
-	beacls::FloatVec mask_right1{ (FLOAT_TYPE)2, (FLOAT_TYPE)2,  (FLOAT_TYPE)50, (FLOAT_TYPE)50, (FLOAT_TYPE)0.3*M_PI, (FLOAT_TYPE)+5};	
+	beacls::FloatVec mask_left1{ (FLOAT_TYPE)-1.5, (FLOAT_TYPE)-1.5,  (FLOAT_TYPE)-3, (FLOAT_TYPE)-2 , (FLOAT_TYPE)-0.3*M_PI, (FLOAT_TYPE)-5};
+	beacls::FloatVec mask_right1{ (FLOAT_TYPE)1.5, (FLOAT_TYPE)1.5,  (FLOAT_TYPE)3, (FLOAT_TYPE)2, (FLOAT_TYPE)0.3*M_PI, (FLOAT_TYPE)+5};	
 
-	beacls::FloatVec mask_left2{ (FLOAT_TYPE)-2, (FLOAT_TYPE)-5,  (FLOAT_TYPE)-100, (FLOAT_TYPE)-100, (FLOAT_TYPE)-1*M_PI, (FLOAT_TYPE)-10 };
-	beacls::FloatVec mask_right2{ (FLOAT_TYPE)3, (FLOAT_TYPE)5,  (FLOAT_TYPE)100, (FLOAT_TYPE)100, (FLOAT_TYPE)1*M_PI, (FLOAT_TYPE)+10};	
+	beacls::FloatVec mask_left2{ (FLOAT_TYPE)-1.5, (FLOAT_TYPE)-5,  (FLOAT_TYPE)-100, (FLOAT_TYPE)-100, (FLOAT_TYPE)-1*M_PI, (FLOAT_TYPE)-10 };
+	beacls::FloatVec mask_right2{ (FLOAT_TYPE)2, (FLOAT_TYPE)5,  (FLOAT_TYPE)100, (FLOAT_TYPE)100, (FLOAT_TYPE)1*M_PI, (FLOAT_TYPE)+10};	
 
-	size_t Nx = 21;
+	size_t Nx = 11;
 	beacls::IntegerVec Ns(num_of_dimensions);
 	Ns.assign(num_of_dimensions, Nx);
 	// maxs[2] = (FLOAT_TYPE)(maxs[2] * (1 - 1. / Ns[2]));
@@ -232,22 +232,22 @@ int main(int argc, char *argv[])
 
 	for (int i = 0; i < data1.size(); ++i) {
         if (data1[i] <= 0 && data2[i] <= 0) {
-            data3[i] = 10000.0;
+            data3[i] = 10.0;
 			// data[i] = 100.0;
 			// std::cout << "1 : " << data3[i] << std::endl;
         }
 		else if (data1[i] >= 0 && data2[i] <= 0){
-			data3[i] = -10000.0;
+			data3[i] = -10.0;
 			// data[i] = 100.0;
 			// std::cout << "2 : " << data3[i] << std::endl;
 		}
 		else if (data1[i] >= 0 && data2[i] >= 0){
-			data3[i] = 10000.0;
+			data3[i] = 10.0;
 			// data[i] = 100.0;
 			// std::cout << "3 : " << data3[i] << std::endl;
 		}
 		else{
-			data3[i] = 10000.0;
+			data3[i] = 10.0;
 			// std::cout << "3 : " << data3[i] << std::endl;
 		}		
     }
