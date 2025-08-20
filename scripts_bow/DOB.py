@@ -8,36 +8,27 @@ import numpy as np
 
 def DOB(state, state_estim, param_filtered, param_estim, dt):
 
- 
+
     M = 1.0  # Mass [kg]
     I = 1.0   # Inertial tensor [kg m^2]
 
-    Xu_dot = 15.26
-    Xu = 1.671
-    Xuu = 0.481
-    bu=  2.1/500.0
-    tau = 1.2
+    Xu_dot = 1.74
+    # Xu = 1.671
+    # Xuu = 0.481
+    Xu = 0.783
+    Xuu = 2.22
 
-
-    # Yv = 0.1074
-    # Yvv = 0.0
-    # Yr = 0.0
-    # Nr = 0.3478
-    # Nrr = 0.3
-    # Nv = 0.0
-    # b2 = 0.045/500.0
-    # b3 = 0.574
-
-    Yv = 0.042
+    Yv = 0.1074
     Yvv = 0.0
     Yr = 0.0
-    Nr = 0.1875
-    Nrr = 2.647
+    Nr = 0.3478
+    Nrr = 0.3
     Nv = 0.0
-    b2 = 0.01/500.0
-    b3 = 1.4    
+    bu=  1.74/500.0
+    b2 = 0.045/500.0
+    b3 = 0.574
 
-    w_cutoff = 1.0
+    w_cutoff = 0.5
     gain = -1.0
 
 
@@ -46,24 +37,24 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
     v    = state[4]
     r    = state[5]
     delta  = state[6]
-    F_eff  = state[7]
+    F  = state[7]
     eps = 0.00001
- 
-    # # F = F_cmd 
+
     # Deadzone
-    s = 25
-    k = 8
-    a1 = 2.2*2.2
-    a2 = 2.2*2.2
-    b11 = 1.0
-    b22 = 1.0
-    T = ((1/(1+np.exp(s*F_eff)))*(b11*F_eff + np.tanh(k*F_eff)*a1) + (1/(1+np.exp(-s*F_eff)))*(b22*F_eff + np.tanh(k*F_eff)*a2))
+    # F = F_cmd 
+    if F < 40.0 and F > -40.0:
+        F = 0.0
+    elif F > 40:
+        F = F + 400.0
+    else:
+        F = F - 400.0
 
 
-    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + T*np.cos(bu*delta))/(M + Xu_dot),
-                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + T*np.sin(b2*delta)),
-                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - b3*T*np.sin(b2*delta))
+    f_usv = np.array([(- Xu*u - Xuu * np.sqrt(u * u + eps) * u + 0.01*F*np.cos(bu*delta))/(M + Xu_dot),
+                    ( -Yv*v - Yvv * np.sqrt(v * v + eps) * v - Yr*r + 0.01*F*np.sin(b2*delta)),
+                    ( - Nr*r - Nrr * np.sqrt(r * r + eps) * r - b3*0.01*F*np.sin(b2*delta))
                     ])
+
 
 
     uvr = np.array([u, v, r])
@@ -83,7 +74,7 @@ def DOB(state, state_estim, param_filtered, param_estim, dt):
     before_param_filtered = param_filtered
     param_filtered = before_param_filtered*math.exp(-w_cutoff*dt) - param_estim*(1-math.exp(-w_cutoff*dt))
 
-    # print(param_filtered)
+
     
     return x_t_plus, param_estim, param_filtered
 

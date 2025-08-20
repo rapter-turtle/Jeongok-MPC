@@ -9,8 +9,8 @@ import time
 import numpy as np
 from DOB import*
 
-ship_state_x = (289577.66 + 291591.05)*0.5  # UTM X (easting)
-ship_state_y = (4117065.30 + 4118523.52)*0.5  
+ship_state_x = 290245.0#(289577.66 + 291591.05)*0.5  # UTM X (easting)
+ship_state_y = 4118000.0#(4117065.30 + 4118523.52)*0.5  
 
 traj_xy = (ship_state_x, ship_state_y)
 offset = np.array([ship_state_x, ship_state_y])
@@ -23,6 +23,7 @@ class AuraMPC(Node):
         self.publisher_ = self.create_publisher(Float64MultiArray, '/actuator_outputs', 10)
         self.ekf_sub = self.create_subscription(Float64MultiArray, '/ekf/estimated_state', self.ekf_callback, 10)
         self.mpcvis_pub = self.create_publisher(MPCTraj, '/mpc_vis', 10)
+        # self.DOB_pub = self.create_publisher(Float64MultiArray, '/DOB_check', 10)
         self.DOB_pub = self.create_publisher(Float64MultiArray, '/DOB', 10)
 
 
@@ -30,14 +31,14 @@ class AuraMPC(Node):
         self.x = ship_state_x
         self.y = ship_state_y
         self.p = self.u = self.v = self.r = 0.0
-        self.delta = self.F = 0.0
+        self.delta = self.F = self.F_eff = 0.0
         self.delta_pwm = self.F_pwm = 1500.0
-        self.states = np.zeros(8)
+        self.states = np.zeros(9)
         self.thr = 0.0
         
         # MPC parameter settings
         self.Tf = 20 # prediction time 4 sec
-        self.N = 40 # prediction horizon
+        self.N = 40 # prediction horizon 
         self.con_dt = 0.5 # control sampling time
         self.ocp_solver = setup_trajectory_tracking(self.states, self.N, self.Tf)
 
@@ -51,18 +52,29 @@ class AuraMPC(Node):
         self.start_time = time.time()
 
         # reference trajectory generation
-        self.A = 150.0
-        self.B = 100.0
-        self.C = 35.0
-        self.theta = np.pi/2
-        self.plot_traj_xy = (ship_state_x+10, ship_state_y+30)
+        # V1
+        # self.A = 150.0
+        # self.B = 100.0
+        # self.C = 35.0
+        # # V2
+        self.A = 70.0
+        self.B = 55.0
+        self.C = 18.0
+        # V3
+        # self.A = 120.0
+        # self.B = 85.0
+        # self.C = 30.0
+        self.theta = 0.0#np.pi
+        self.plot_traj_xy = (ship_state_x-300.0, ship_state_y+0)
         
         self.ref_dt = 0.01
         self.ref_iter = int(self.con_dt/self.ref_dt)
-        self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt, self.plot_traj_xy, self.theta, self.A, self.B, self.C) # reference dt = 0.01 sec, 1000 sec trajectory generation
-        # self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt) # reference dt = 0.01 sec, 1000 sec trajectory generation
-        self.reference = self.reference[::self.ref_iter,:]
+        # self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt, self.plot_traj_xy, self.theta, self.A, self.B, self.C) # reference dt = 0.01 sec, 1000 sec trajectory generation
         
+        # print("speed : ", self.reference[0,3])
+        # self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt) # reference dt = 0.01 sec, 1000 sec trajectory generation
+        # self.reference = self.reference[::self.ref_iter,:]
+        self.ref_check = np.zeros(self.N+1)
         
         self.k = 0
         self.create_timer(self.con_dt, self.run)
@@ -126,7 +138,8 @@ class AuraMPC(Node):
     def ekf_callback(self, msg):# - frequency = gps callback freq. 
         """Callback to update states from EKF estimated state."""
         self.x, self.y, self.p, self.u, self.v, self.r = msg.data[:6]
-        self.states = np.array([self.x-offset[0], self.y-offset[1], self.p, self.u, self.v, self.r, self.delta, self.F])
+        self.p = self.yaw_discontinuity(self.p)
+        self.states = np.array([self.x-offset[0], self.y-offset[1], self.p, self.u, self.v, self.r, self.delta, self.F_eff, self.F])
 
 
     def yaw_discontinuity(self, ref):
@@ -144,31 +157,47 @@ class AuraMPC(Node):
         elif min_element_index == 2:
             ref = ref + 2 * math.pi
         return ref
+        # goal = ref
+        # if ref > np.pi:
+        #     while goal <= np.pi:
+        #         goal = goal - 2*np.pi
+        # elif ref < -np.pi:
+        #     while goal >= -np.pi:
+        #         goal = goal + 2*np.pi
+        # return goal
 
  
     def run(self):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
-        if time.time() - self.start_time > 10:          
+        if time.time() - self.start_time > 2:          
             t = time.time()
             ##### Reference States ######
             for j in range(self.N+1):
                 refs = self.reference[k+j,:]
                 refs[2] = self.yaw_discontinuity(refs[2])
-                yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],0,0,0,0,0,0,0))
+                yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],refs[3],0,0,0,0,0,0,0))
                 if j == self.N:
-                    yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],0,0,0,0,0))
+                    yref = np.hstack((refs[0]-offset[0],refs[1]-offset[1],refs[2],refs[3],0,0,0,0,0))
                 self.ocp_solver.cost_set(j, "yref", yref)
-            
+                
+                self.ref_check[j] = refs[0]-offset[0]
+                print(refs[3])
+            # print(self.ref_check)
+            obs_base = self.plot_traj_xy - offset
+
+            # print(self.plot_traj_xy)
+            # print(obs_base)
 
             ##### Obstacle Position ######
             # obs_pos = np.array([self.x+20-offset[0], self.y+40-offset[1], 3,  # Obstacle-1: x, y, radius
-            #                     self.x+-10-offset[0], self.y+20-offset[1], 4]) # Obstacle-2: x, y, radius
-
-            obs_pos = np.array([48.0, +100.0, 6.0,  # Obstacle-1: x, y, radius
-                                -32.0, -40.0, 8.0, # Obstacle-2: x, y, radius
-            # obs_pos = np.array([2500.0, +40.0, 6.0,  # Obstacle-1: x, y, radius
-            #                     -0.0, +1500.0, 8.0, 
+            #                     self.x+-10-offset[0], self.y+20-offset[1], 4, # Obstacle-2: x, y, radius
+            obs_pos = np.array([1000.0, +40.0, 6.0,  # Obstacle-1: x, y, radius
+                                -0.0, +1000.0, 8.0, 
+            # obs_pos = np.array([-500 -65.0, 178+40.0, 6.0,  # Obstacle-1: x, y, radius
+            #                     -500 + 40.0, 178-30.0, 8.0,
+            # obs_pos = np.array([obs_base[0]- 65.0, obs_base[1]+40.0, 6.0,  # Obstacle-1: x, y, radius
+            #                     obs_base[0] + 40.0, obs_base[1]-30.0, 8.0,             
                                 # 0.0,0.0,0.0]) # Obstacle-2: x, y, radius
                                 self.param_filtered[0],self.param_filtered[1],self.param_filtered[2]]) # Obstacle-2: x, y, radius
             
@@ -195,6 +224,7 @@ class AuraMPC(Node):
             t_feedback = self.ocp_solver.get_stats('time_tot')
 
             # obtain mpc input
+            self.F_eff = self.ocp_solver.get(1, "x")[7]
             del_con = self.ocp_solver.get(0, "u")
             self.delta += del_con[0]*self.con_dt
             self.F += del_con[1]*self.con_dt
@@ -208,7 +238,7 @@ class AuraMPC(Node):
             self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
             actuator_msg = Float64MultiArray()
             actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
-            print(del_con[0], del_con[1])
+            # print(del_con[0], del_con[1])
             self.publisher_.publish(actuator_msg)                                
             
             
@@ -237,7 +267,7 @@ class AuraMPC(Node):
                 mpc_pred.v = self.ocp_solver.get(j, "x")[4]
                 mpc_pred.r = self.ocp_solver.get(j, "x")[5]
                 mpc_pred.delta = self.ocp_solver.get(j, "x")[6]
-                mpc_pred.f = self.ocp_solver.get(j, "x")[7]
+                mpc_pred.f = self.ocp_solver.get(j, "x")[8]
                 mpc_data_stack.state.append(mpc_pred)            
                 # print(mpc_pred.u)
                 mpc_ref.x = self.reference[k+j,0]
@@ -270,11 +300,19 @@ class AuraMPC(Node):
                 self.k = 0  # Reset the index if it goes beyond the reference length
 
         else:
+            # print(self.states[0])
+            # print(self.states[0] + offset[0])
+            self.plot_traj_xy = (self.states[0] + offset[0], self.states[1] + offset[1])
+            
+            self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt, self.plot_traj_xy, self.theta, self.A, self.B, self.C) # reference dt = 0.01 sec, 1000 sec trajectory generation
+            self.reference = self.reference[::self.ref_iter,:]
+
+
             print("prepare time : ",time.time() - self.start_time)
             self.ocp_solver.options_set('rti_phase', 1)
             status = self.ocp_solver.solve()
             t_preparation = self.ocp_solver.get_stats('time_tot')
-
+            
             # set initial state
             self.ocp_solver.set(0, "lbx", self.states)
             self.ocp_solver.set(0, "ubx", self.states)
@@ -282,8 +320,7 @@ class AuraMPC(Node):
 
     def run_DOB(self):
         dob_state = self.states
-        dob_state[7] = self.dob_thrust
-        self.state_estim, self.param_estim, self.param_filtered = DOB(self.states, self.state_estim, self.param_filtered, self.param_estim, self.DOB_dt)
+        self.state_estim, self.param_estim, self.param_filtered = DOB(dob_state, self.state_estim, self.param_filtered, self.param_estim, self.DOB_dt)
              
         DOB_msg = Float64MultiArray()
         DOB_msg.data = [self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]
