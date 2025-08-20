@@ -256,7 +256,7 @@ class AuraMPC(Node):
 
         elif self.count_on_zero <= stop_dwell_len - 1 and self.bow_switch == 0.0:
             self.count_on_zero += 1
-            start_idx = dwell_len - self.count_on_zero 
+            start_idx = stop_dwell_len - self.count_on_zero 
             input_bow_array = bow_mapping(model, bow_array[start_idx:], self.bow_switch,self.con_dt, len(bow_array[start_idx:]),
                                         dwell_time, stop_dwell_time)
             CIA_bow_array = np.concatenate([np.zeros(start_idx), input_bow_array])
@@ -278,10 +278,16 @@ class AuraMPC(Node):
 
             print("e")
 
-        else:
+        elif self.count_on_zero >= stop_dwell_len and self.bow_switch != 0.0:
+            self.count_on_zero = 0
             CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
 
             print("f")
+
+        else:
+            CIA_bow_array = bow_mapping(model, bow_array, self.bow_switch, self.con_dt, len(bow_array), dwell_time, stop_dwell_time)
+
+            print("g")
 
         print(self.count_on_left, self.count_on_right, self.count_on_zero)
         # print(bow_array)          
