@@ -25,6 +25,7 @@ def export_heron_model() -> AcadosModel:
     b2 = 0.01/500.0
     b3 = 1.4    
 
+
     # set up states & controls
     xn   = SX.sym('xn')
     yn   = SX.sym('yn')
@@ -108,8 +109,10 @@ def export_heron_model() -> AcadosModel:
 
 
     h_expr = SX.zeros(num_obs,1)
-    h_expr[0] = 2.0#h1
-    h_expr[1] = 2.0#h2
+    h_expr[0] = h1
+    h_expr[1] = h2
+    # h_expr[0] = h1*alpha + h1_dot
+    # h_expr[1] = h2*alpha + h2_dot
     
 
 
@@ -150,7 +153,7 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     ocp.cost.cost_type = 'NONLINEAR_LS'
     ocp.cost.cost_type_e = 'NONLINEAR_LS'
 
-    Q_mat = 2*np.diag([1e3, 1e3, 1e-2, 0, 0.0, 0.0, 1e1, 1e-3])
+    Q_mat = 2*np.diag([1e3, 1e3, 1e-2, 0, 0.0, 0.0, 1e-1, 1e-3])
     R_mat = 2*np.diag([1e2, 1e1])
 
     ocp.cost.W = scipy.linalg.block_diag(Q_mat, R_mat)
@@ -194,10 +197,12 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     # set constraints
     ocp.constraints.lbu = np.array([-100,-1.0])
     ocp.constraints.ubu = np.array([+100,+1.0])
+    # ocp.constraints.lbu = np.array([-200,-1.0])
+    # ocp.constraints.ubu = np.array([+200,+1.0])
     ocp.constraints.idxbu = np.array([0, 1])
 
     ocp.constraints.lbx = np.array([-250, 0.0])
-    ocp.constraints.ubx = np.array([250, 12.5])
+    ocp.constraints.ubx = np.array([250, 13.5])
     # ocp.constraints.lbx = np.array([-250, 0.0])
     # ocp.constraints.ubx = np.array([250, 20])    
     ocp.constraints.idxbx = np.array([6, 7])

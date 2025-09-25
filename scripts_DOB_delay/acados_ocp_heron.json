@@ -112,7 +112,7 @@
         ],
         "ubx": [
             250.0,
-            12.5
+            13.5
         ],
         "ubx_0": [
             0.0,
@@ -245,7 +245,7 @@
                 0.0,
                 0.0,
                 0.0,
-                20.0,
+                0.2,
                 0.0,
                 0.0,
                 0.0
@@ -367,7 +367,7 @@
                 0.0,
                 0.0,
                 0.0,
-                20.0,
+                0.2,
                 0.0,
                 0.0,
                 0.0
@@ -477,7 +477,7 @@
                 0.0,
                 0.0,
                 0.0,
-                20.0,
+                0.2,
                 0.0
             ],
             [
@@ -614,9 +614,9 @@
     },
     "json_file": "acados_ocp_heron.json",
     "model": {
-        "con_h_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegmcaaaaaaaaaaaaaajgcaaaaaaachbaaaaaaaaaaaaaaa",
+        "con_h_expr": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegbaaaaaaaaaaaaaaaeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaacaaaaaaaihogegpcaaaaaaaaaaaaaadaaaaaaapgihbdeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaacaaaaaaajhogegpcaaaaaaaaaaaaaadaaaaaaapgjhbdeglaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgchbdegcaaaaaaaaaaaaaaaegbaaaaaaaaaaaaaaaeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaachbaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgihcdeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaachfaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgjhcdeglaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgchcd",
         "con_h_expr_0": null,
-        "con_h_expr_e": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegmcaaaaaaaaaaaaaajgcaaaaaaachbaaaaaaaaaaaaaaa",
+        "con_h_expr_e": "jhpnnagiieahaaaadaaaaaaaaaaaaaaaaaeggaaaaaaaaaaaaaaacaaaaaaaaaaaaaaabaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabaaaaaaaaaaaaaaacaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegbaaaaaaaaaaaaaaaeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaacaaaaaaaihogegpcaaaaaaaaaaaaaadaaaaaaapgihbdeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaacaaaaaaajhogegpcaaaaaaaaaaaaaadaaaaaaapgjhbdeglaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgchbdegcaaaaaaaaaaaaaaaegbaaaaaaaaaaaaaaaeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaachbaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgihcdeglaaaaaaaaaaaaaaaegcaaaaaaaaaaaaaaachfaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgjhcdeglaaaaaaaaaaaaaaaegpcaaaaaaaaaaaaaadaaaaaaapgchcd",
         "con_phi_expr": null,
         "con_phi_expr_0": null,
         "con_phi_expr_e": null,

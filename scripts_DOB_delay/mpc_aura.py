@@ -47,7 +47,8 @@ class AuraMPC(Node):
         self.delay = 2.0   # 2초 delay
         self.delay_step = int(self.delay / self.con_dt)
         self.input_history = np.zeros((self.delay_step, 2))
-
+        self.now_delta = 0.0
+        self.new_input = np.array([0.0,0.0])
 
         # DOB(state, state_estim, param_filtered, param_estim, dt):
         self.state_estim = np.array([0.0, 0.0, 0.0])
@@ -71,7 +72,7 @@ class AuraMPC(Node):
         # V3
         self.A = 120.0
         self.B = 85.0
-        self.C = 25.0
+        self.C = 28.0
         self.theta = 0.0#np.pi
         self.plot_traj_xy = (ship_state_x-300.0, ship_state_y+0)
         
@@ -147,7 +148,8 @@ class AuraMPC(Node):
         """Callback to update states from EKF estimated state."""
         self.x, self.y, self.p, self.u, self.v, self.r = msg.data[:6]
         self.p = self.yaw_discontinuity(self.p)
-        self.states = np.array([self.x-offset[0], self.y-offset[1], self.p, self.u, self.v, self.r, self.delta, self.F])
+
+        self.states = np.array([self.x-offset[0], self.y-offset[1], self.p, self.u, self.v, self.r, self.input_history[0][0], self.input_history[0][1]])
 
 
     def yaw_discontinuity(self, ref):
@@ -178,7 +180,7 @@ class AuraMPC(Node):
     def run(self):
         k = self.k # -> 현재 시간을 index로 표시 -> 그래야 ref trajectory설정가능(******** todo ********)
                 
-        if time.time() - self.start_time > 5:          
+        if time.time() - self.start_time > 1:          
             t = time.time()
             ##### Reference States ######
             for j in range(self.N+1):
@@ -242,24 +244,29 @@ class AuraMPC(Node):
             t_feedback = self.ocp_solver.get_stats('time_tot')
 
             # obtain mpc input
+            x_con = self.ocp_solver.get(1, "x")
             del_con = self.ocp_solver.get(0, "u")
+            # self.delta = x_con[6]
+            # self.F = x_con[7]
+            
             self.delta += del_con[0]*self.con_dt
             self.F += del_con[1]*self.con_dt
-            if self.F <= 0:
-                self.F = 0
-            elif self.F >= 12.5:
-                self.F = 12.5
+
 
             new_input = np.array([self.delta, self.F])
             self.input_history = np.vstack([self.input_history[1:], new_input])
             # print(self.input_history[-1])
             
 
+            self.now_delta = self.input_history[0][0]
+
             self.get_logger().info(f"MPC Computation Time: {t_preparation + t_feedback:.4f}s")
 
 
             # Publish the control inputs (e.g., thrust commands)
-            self.delta_pwm = self.convert_steering_to_pwm(self.delta)
+            
+            self.delta_pwm = self.convert_steering_to_pwm(self.now_delta)
+            # self.delta_pwm = self.convert_steering_to_pwm(self.delta)
             self.F_pwm, self.thr, self.dob_thrust = self.convert_thrust_to_pwm(self.F*100.0, self.thr)                        
             actuator_msg = Float64MultiArray()
             actuator_msg.data = [self.delta_pwm, self.F_pwm, 0.0, 0.0]
@@ -330,7 +337,9 @@ class AuraMPC(Node):
             # print(self.states[0] + offset[0])
             self.plot_traj_xy = (self.states[0] + offset[0], self.states[1] + offset[1])
             
-            self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt, self.plot_traj_xy, self.theta, self.A, self.B, self.C) # reference dt = 0.01 sec, 1000 sec trajectory generation
+            # self.reference = generate_figure_eight_trajectory_con(1000, self.ref_dt, self.plot_traj_xy, self.theta, self.A, self.B, self.C) # reference dt = 0.01 sec, 1000 sec trajectory generation
+            self.reference = generate_figure_eight_trajectory(1000, self.ref_dt, self.plot_traj_xy, self.theta, self.A, self.B, self.C) # reference dt = 0.01 sec, 1000 sec trajectory generation
+            
             self.reference = self.reference[::self.ref_iter,:]
 
 
@@ -358,7 +367,6 @@ class AuraMPC(Node):
         self.state_estim, self.param_estim, self.param_filtered = DOB(
             self.input_history[0], dob_state, self.state_estim, self.param_filtered, self.param_estim, self.DOB_dt
         )
-
         DOB_msg = Float64MultiArray()
         DOB_msg.data = [self.param_filtered[0], self.param_filtered[1], self.param_filtered[2]]
         self.DOB_pub.publish(DOB_msg)
