@@ -36,7 +36,6 @@ class ShipSimulator(Node):
         self.delay_step = int(self.delay / self.con_dt)
         self.input_buffer = np.zeros((self.delay_step, 2))  # [δ_cmd, F_cmd] 히스토리
         self.delayed_input = np.array([0,0])
-        self.disturbance_state = np.zeros((6))
 
         # Timer
         self.timer = self.create_timer(self.dt, self.run)
@@ -108,20 +107,6 @@ class ShipSimulator(Node):
         lon, lat = pyproj.transform(self.utm_proj, self.wgs84_proj, utm_x, utm_y)
         return lat, lon
 
-    def wave_disturbance(self, disturbance_state, wave_direction, wind_speed, omega, lamda, Kw, sigmaF1, sigmaF2, dt):
-        omega_e = np.abs(omega - (omega * omega / 9.81) * wind_speed * np.cos(wave_direction))
-        x1 = disturbance_state[0]
-        x2 = disturbance_state[1]
-
-        omegaF1 = np.random.normal(0.0, sigmaF1)
-        omegaF2 = np.random.normal(0.0, sigmaF2)
-
-        xdot = np.array([x2, -omega_e * omega_e * x1 - 2 * lamda * omega_e * x2 + Kw * omegaF1, omegaF2])
-        disturbance_state = xdot * dt + disturbance_state
-
-        disturbance_force = disturbance_state[1] + disturbance_state[2]
-        return disturbance_state, disturbance_force
-
     def ship_dynamics(self, state, control, dt):
         """컨트롤러 모델과 맞춘 선박 dynamics"""
         # Parameters
@@ -164,7 +149,6 @@ class ShipSimulator(Node):
         delta, F_cmd = control
         
         delta = self.now_delta
-        # print(delta)
         # F_cmd = self.now_F
         
         # Deadzone + thrust nonlinear
@@ -178,57 +162,9 @@ class ShipSimulator(Node):
         # v_dot = (-Yv*v - Yr*r + T*np.sin(b2*delta)) #- 0.01
         # r_dot = (-Nr*r - Nrr*np.sqrt(r*r+eps)*r - b3*T*np.sin(b2*delta))
 
-        ################################################ Environmental disturbance ################################################
-        wind_direction = 45*3.141592/180
-        wind_speed = 2.0
-
-        self.disturbance_state[:3], XY_wave_force = self.wave_disturbance(
-            self.disturbance_state[:3], wind_direction, wind_speed, 0.8, 0.1, 0.64, 6, 2, dt)
-        self.disturbance_state[3:6], N_wave_force = self.wave_disturbance(
-            self.disturbance_state[3:6], wind_direction, wind_speed, 0.8, 0.1, 1.0, 1, 0.1, dt)
-
-        X_wave_force = XY_wave_force * np.cos(wind_direction - psi)
-        Y_wave_force = XY_wave_force * np.sin(wind_direction - psi)
-        
-        U_wave_force = X_wave_force * np.cos(psi) + Y_wave_force * np.sin(psi)
-        V_wave_force = -X_wave_force * np.sin(psi) + Y_wave_force * np.cos(psi)
-
-        # Wind disturbance
-        L = 8.0
-        H = 2.0
-        W = 2.6
-        Afw = H*W
-        Alw = L*H
-        LOA = L
-        lau = 1.2
-        CD_lAF = 0.55
-        delta_ = 0.6
-        CDl = CD_lAF * Afw / Alw
-        CDt = 0.8
-
-        u_rel_wind = u - wind_speed * np.cos(wind_direction - psi)
-        v_rel_wind = v - wind_speed * np.sin(wind_direction - psi)
-        gamma = -np.arctan2(v_rel_wind, u_rel_wind)
-
-        Cx = CD_lAF * np.cos(gamma) / (1 - delta_ * 0.5 * (1 - CDl / CDt) * (np.sin(2 * gamma))**2)
-        Cy = CDt * np.sin(gamma) / (1 - delta_ * 0.5 * (1 - CDl / CDt) * (np.sin(2 * gamma))**2)
-        Cn = -0.18 * (gamma - np.pi * 0.5) * Cy
-
-        X_wind_force = 0.5 * lau * (u_rel_wind**2 + v_rel_wind**2) * Cx * Afw
-        Y_wind_force = 0.5 * lau * (u_rel_wind**2 + v_rel_wind**2) * Cy * Alw
-        N_wind_force = 0.5 * lau * (u_rel_wind**2 + v_rel_wind**2) * Cn * Alw * LOA
-
-        U_wind_force = X_wind_force * np.cos(psi) + Y_wind_force * np.sin(psi)
-        V_wind_force = -X_wind_force * np.sin(psi) + Y_wind_force * np.cos(psi)
-
-        u_dis = 0.005*U_wind_force + 2.0*U_wave_force
-        v_dis = 0.005*V_wind_force + 2.0*V_wave_force
-        n_dis = 0.005*N_wind_force
-
-        ################################################ Environmental disturbance ################################################
-        u_dot = (- Xu*u - Xuu * np.sqrt(u * u + eps) * u + alpha1*T*np.cos(alpha2*delta) + alpha1*u_dis)  
-        v_dot = (-Yv*v - Yr*r - Yvv * np.sqrt(v* v + eps) * v + alpha3*T*np.sin(alpha2*delta) + alpha3*v_dis) 
-        r_dot = (- Nr*r - Nv*v - Nrr * np.sqrt(r * r + eps) * r - alpha4*T*np.sin(alpha2*delta) + alpha3*n_dis)
+        u_dot = (- Xu*u - Xuu * np.sqrt(u * u + eps) * u + alpha1*T*np.cos(alpha2*delta)) - 0.1
+        v_dot = (-Yv*v - Yr*r - Yvv * np.sqrt(v* v + eps) * v + alpha3*T*np.sin(alpha2*delta))- 0.1
+        r_dot = (- Nr*r - Nv*v - Nrr * np.sqrt(r * r + eps) * r - alpha4*T*np.sin(alpha2*delta))
         # print(u, v, r, F_cmd)
 
         # Kinematics
