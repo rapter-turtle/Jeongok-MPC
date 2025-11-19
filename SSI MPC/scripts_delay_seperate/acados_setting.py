@@ -10,7 +10,7 @@ def export_heron_model() -> AcadosModel:
 
     M = 1.0  # Mass [kg]
     I = 1.0   # Inertial tensor [kg m^2]
-
+ 
     Xu = 0.0845
     Xuu = 0.0195
     Yv = 0.0485
@@ -53,22 +53,41 @@ def export_heron_model() -> AcadosModel:
     states_dot = vertcat(xn_dot, yn_dot, psi_dot, u_dot, v_dot, r_dot, delta_dot, F_dot)
 
     
-    M_feat = 25      # number of random features
-    dim_z  = 5       # z = [u, v, r, delta, F]
+    # -------------------------
+    # RFF 설정: surge용 / sway-yaw용 분리
+    # -------------------------
+    M_surge      = 25   # surge용 feature 개수
+    dim_z_surge  = 3    # z_u = [u, F, delta]
 
-    # α_u, α_v, α_r  (각 M_feat)
-    alpha_u = SX.sym('alpha_u', M_feat)
-    alpha_v = SX.sym('alpha_v', M_feat)
-    alpha_r = SX.sym('alpha_r', M_feat)
+    M_lat        = 25   # sway/yaw용 feature 개수
+    dim_z_lat    = 4    # z_lat = [v, r, F, delta]
 
-    # w: (M_feat * dim_z,)  flatten한 상태
-    w = SX.sym('w', M_feat * dim_z)
+    # ---- 파라미터 심볼 정의 ----
+    # α_u: surge용 (M_surge)
+    alpha_u = SX.sym('alpha_u', M_surge)
 
-    # b: (M_feat,)
-    b = SX.sym('b', M_feat)
+    # α_v, α_r: sway, yaw용 (각 M_lat)
+    alpha_v = SX.sym('alpha_v', M_lat)
+    alpha_r = SX.sym('alpha_r', M_lat)
 
-    # 전체 parameter vector
-    p = vertcat(alpha_u, alpha_v, alpha_r, w, b)
+    # w_u: (M_surge * dim_z_surge,) flatten
+    w_u = SX.sym('w_u', M_surge * dim_z_surge)
+    b_u = SX.sym('b_u', M_surge)
+
+    # w_lat: (M_lat * dim_z_lat,)
+    w_lat = SX.sym('w_lat', M_lat * dim_z_lat)
+    b_lat = SX.sym('b_lat', M_lat)
+
+    # 전체 parameter vector p (→ main 코드에서 이 순서 그대로 쌓아야 함)
+    p = vertcat(
+        alpha_u,        # 길이 M_surge
+        alpha_v,        # 길이 M_lat
+        alpha_r,        # 길이 M_lat
+        w_u,            # 길이 M_surge * dim_z_surge
+        b_u,            # 길이 M_surge
+        w_lat,          # 길이 M_lat * dim_z_lat
+        b_lat           # 길이 M_lat
+    )
 
     s = 25
     k = 8
@@ -84,24 +103,36 @@ def export_heron_model() -> AcadosModel:
 
 
     # -------------------------
-    # RFF feature φ(z) 계산
+    # RFF feature φ_u(z_u), φ_lat(z_lat) 계산
     # -------------------------
-    # z = [u, v, r, delta, F]
-    z = vertcat(u, v, r, delta, F)
+    # surge용 입력: z_u = [u, F, delta]
+    z_u = vertcat(u, F, delta)  # dim_z_surge = 3
 
-    phi = SX.zeros(M_feat, 1)
+    phi_u = SX.zeros(M_surge, 1)
 
-    for i in range(M_feat):
-        # w_i: dim_z 길이의 부분벡터
+    for i in range(M_surge):
         dot_wz = 0
-        for j in range(dim_z):
-            dot_wz = dot_wz + w[i*dim_z + j] * z[j]
-        phi[i] = cos(dot_wz + b[i])
+        for j in range(dim_z_surge):
+            dot_wz = dot_wz + w_u[i*dim_z_surge + j] * z_u[j]
+        phi_u[i] = cos(dot_wz + b_u[i])
 
+    # sway/yaw용 입력: z_lat = [v, r, F, delta]
+    z_lat = vertcat(v, r, F, delta)  # dim_z_lat = 4
+
+    phi_lat = SX.zeros(M_lat, 1)
+
+    for i in range(M_lat):
+        dot_wz = 0
+        for j in range(dim_z_lat):
+            dot_wz = dot_wz + w_lat[i*dim_z_lat + j] * z_lat[j]
+        phi_lat[i] = cos(dot_wz + b_lat[i])
+
+    # -------------------------
     # h_u, h_v, h_r 계산
-    h_u = (alpha_u.T @ phi) / M_feat
-    h_v = (alpha_v.T @ phi) / M_feat
-    h_r = (alpha_r.T @ phi) / M_feat
+    # -------------------------
+    h_u = (alpha_u.T @ phi_u) / M_surge
+    h_v = (alpha_v.T @ phi_lat) / M_lat
+    h_r = (alpha_r.T @ phi_lat) / M_lat
 
 
 
@@ -182,11 +213,13 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
 
     ocp.constraints.x0 = x0
 
-    M_feat = 25
-    dim_z  = 5
-    total_param_dim = 3*M_feat + M_feat*dim_z + M_feat  # 3M + M*dim_z + M
+    # M_feat = 25
+    # dim_z  = 5
+    # total_param_dim = 3*M_feat + M_feat*dim_z + M_feat  # 3M + M*dim_z + M
+    # ocp.parameter_values = np.zeros(total_param_dim)
+    # ---- parameter dimension을 model.p에서 자동으로 가져오기 ----
+    total_param_dim = model.p.rows()   # or model.p.shape[0]
     ocp.parameter_values = np.zeros(total_param_dim)
-
 
 
     num_obs = 2
@@ -222,7 +255,7 @@ def setup_trajectory_tracking(x0, N_horizon, Tf):
     # ocp.constraints.lbx = np.array([-250, 0.0])
     # ocp.constraints.ubx = np.array([250, 13.5])
     ocp.constraints.lbx = np.array([-250, 0.0])
-    ocp.constraints.ubx = np.array([250, 25])    
+    ocp.constraints.ubx = np.array([250, 15])    
     ocp.constraints.idxbx = np.array([6, 7])
 
     ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM' # FULL_CONDENSING_QPOASES

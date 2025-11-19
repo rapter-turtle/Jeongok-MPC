@@ -60,12 +60,25 @@ class AuraMPC(Node):
         self.DOB_switch = True
 
         # RFF initialization (add into __init__)
-        self.M = 25
-        self.dim_z = 5  # define according to your z
-        self.w, self.b = self.init_rff_parameters(self.M, self.dim_z, sigma_w=0.01)
-        self.alpha_u = np.zeros(self.M)
-        self.alpha_v = np.zeros(self.M)
-        self.alpha_r = np.zeros(self.M)
+        # ---------------------------
+        # Surge model
+        # ---------------------------
+        self.M_surge = 25
+        self.dim_z_surge = 3   # [u, F, delta]
+        self.w_u, self.b_u = self.init_rff_parameters(self.M_surge, self.dim_z_surge)
+        self.alpha_u = np.zeros(self.M_surge)
+
+
+        # ---------------------------
+        # Sway/Yaw model
+        # ---------------------------
+        self.M_lat = 25
+        self.dim_z_lat = 4     # [v, r, F, delta]
+        self.w_lat, self.b_lat = self.init_rff_parameters(self.M_lat, self.dim_z_lat)
+        self.alpha_v = np.zeros(self.M_lat)
+        self.alpha_r = np.zeros(self.M_lat)
+
+
         self.states_prev = np.zeros(8)  # previous state
 
 
@@ -86,7 +99,7 @@ class AuraMPC(Node):
         # V4
         self.A = 100.0
         self.B = 70.0
-        self.C = 22.0
+        self.C = 20.0
         self.theta = 0.0#np.pi
         self.plot_traj_xy = (ship_state_x-300.0, ship_state_y+0)
         
@@ -225,22 +238,18 @@ class AuraMPC(Node):
             # print(obs_base)
 
             if self.DOB_switch:
-                # 1) alpha_u, alpha_v, alpha_r   (each M)
-                alpha_part = np.hstack([self.alpha_u, self.alpha_v, self.alpha_r])
-
-                # 2) w flattened (M*dim_z)
-                w_part = self.w.flatten()
-
-                # 3) b (M)
-                b_part = self.b
-
-                # Complete p vector
-                param_vec = np.hstack([alpha_part, w_part, b_part])
-
+                param_vec = np.hstack([
+                    self.alpha_u,
+                    self.alpha_v,
+                    self.alpha_r,
+                    self.w_u.flatten(),
+                    self.b_u,
+                    self.w_lat.flatten(),
+                    self.b_lat
+                ])
             else:
-                # When DOB_switch is OFF → use zeros
-                total_dim = 3*self.M + self.M*self.dim_z + self.M
-                param_vec = np.zeros(total_dim)
+                param_vec = np.zeros(300)
+
 
             # Send parameters to all shooting nodes
             for j in range(self.N+1):
@@ -263,7 +272,25 @@ class AuraMPC(Node):
             else:
                 disturbance = np.array([0,0,0])
             
-            pred_state = forward_prediction(self.states, self.input_history, self.delay, self.con_dt, disturbance)
+            # pred_state = forward_prediction(self.states, self.input_history, self.delay, self.con_dt, disturbance)
+            rff_params = {
+                "w_u": self.w_u,
+                "b_u": self.b_u,
+                "alpha_u": self.alpha_u,
+                "w_lat": self.w_lat,
+                "b_lat": self.b_lat,
+                "alpha_v": self.alpha_v,
+                "alpha_r": self.alpha_r,
+            }
+
+            pred_state = forward_prediction(
+                self.states,
+                self.input_history,
+                self.delay,
+                self.con_dt,
+                disturbance,
+                rff_params
+            )
             # print(pred_state)
             self.ocp_solver.set(0, "lbx", pred_state)
             self.ocp_solver.set(0, "ubx", pred_state)
@@ -385,7 +412,26 @@ class AuraMPC(Node):
             else:
                 disturbance = np.array([0,0,0])
             
-            pred_state = forward_prediction(self.states, self.input_history, self.delay, self.con_dt, disturbance)
+            # pred_state = forward_prediction(self.states, self.input_history, self.delay, self.con_dt, disturbance)
+            rff_params = {
+                "w_u": self.w_u,
+                "b_u": self.b_u,
+                "alpha_u": self.alpha_u,
+                "w_lat": self.w_lat,
+                "b_lat": self.b_lat,
+                "alpha_v": self.alpha_v,
+                "alpha_r": self.alpha_r,
+            }
+
+            pred_state = forward_prediction(
+                self.states,
+                self.input_history,
+                self.delay,
+                self.con_dt,
+                disturbance,
+                rff_params
+            )
+            
             self.ocp_solver.set(0, "lbx", pred_state)
             self.ocp_solver.set(0, "ubx", pred_state)
 
@@ -401,14 +447,21 @@ class AuraMPC(Node):
         F = self.input_history[0][1]
 
         # ---------------------------
-        # 1. Form z vector
+        # 1. z vectors
         # ---------------------------
-        z = np.array([self.u, self.v, self.r, delta, F])
+
+        # surge용 입력
+        z_u = np.array([self.u, F, delta])
+
+        # sway/yaw용 입력
+        z_lat = np.array([self.v, self.r, F, delta])
+
 
         # ---------------------------
-        # 2. RFF feature vector
+        # 2. RFF feature
         # ---------------------------
-        phi = np.cos(self.w @ z + self.b)    # shape = (M,)
+        phi_u  = np.cos(self.w_u  @ z_u  + self.b_u)     # shape = (M_surge,)
+        phi_lat = np.cos(self.w_lat @ z_lat + self.b_lat) # shape = (M_lat,)
 
         # ---------------------------
         # 3. nominal model f_nom (u̇, v̇, ṙ)
@@ -478,18 +531,18 @@ class AuraMPC(Node):
         # ---------------------------
         # 6. h_hat(z) per dimension
         # ---------------------------
-        h_u = (self.alpha_u @ phi) / self.M
-        h_v = (self.alpha_v @ phi) / self.M
-        h_r = (self.alpha_r @ phi) / self.M
+        h_u = (self.alpha_u @ phi_u) / self.M_surge
+        h_v = (self.alpha_v @ phi_lat) / self.M_lat
+        h_r = (self.alpha_r @ phi_lat) / self.M_lat
 
         # ---------------------------
         # 7. α update (3 sets)
         # ---------------------------
-        lr = 0.01
+        lr = 0.001
 
-        self.alpha_u = self.alpha_u - lr * (h_u - res_u) * phi
-        self.alpha_v = self.alpha_v - lr * (h_v - res_v) * phi
-        self.alpha_r = self.alpha_r - lr * (h_r - res_r) * phi
+        self.alpha_u -= lr*(h_u - res_u)*phi_u
+        self.alpha_v -= lr*(h_v - res_v)*phi_lat
+        self.alpha_r -= lr*(h_r - res_r)*phi_lat
 
         # ---------------------------
         # 8. Save states
